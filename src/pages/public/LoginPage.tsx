@@ -97,7 +97,9 @@ export const LoginPage: React.FC = () => {
       } else if (regRes.success && regRes.requiresEmailConfirmation) {
         setIsLoading(false);
         setInfoMessage(
-          `Demo Student (${demoEmail}) was just created! Please disable "Confirm email" in Supabase Auth → Providers → Email (or confirm the email) and click Demo Student again.`
+          `⚠️ Demo accounts are blocked by Supabase email confirmation. ` +
+          `Go to Supabase Dashboard → Authentication → Providers → Email and ` +
+          `turn OFF "Confirm email". Then run the confirm-users SQL from the README and try again.`
         );
         return;
       }
@@ -107,9 +109,17 @@ export const LoginPage: React.FC = () => {
 
     if (res.success) {
       navigate(res.role === 'admin' ? '/admin/dashboard' : '/student/dashboard');
+    } else if (res.error?.includes('email confirmation is still enabled')) {
+      setErrorMessage(
+        `⚠️ Supabase "Confirm email" is still ON. ` +
+        `Go to Supabase Dashboard → Authentication → Providers → Email and turn it OFF. ` +
+        `Then run the confirm-users SQL from the README to unblock existing accounts.`
+      );
     } else if (role === 'admin') {
       setErrorMessage(
-        `${res.error || 'Demo Admin login failed.'} Create ${demoEmail} (password: ${demoPass}) in Supabase Authentication → Users, then promote it to admin in SQL Editor.`
+        `${res.error || 'Demo Admin login failed.'} ` +
+        `Create ${demoEmail} (password: ${demoPass}) in Supabase Authentication → Users, ` +
+        `then promote to admin: UPDATE public.profiles SET role = 'admin' WHERE email = '${demoEmail}';`
       );
     } else {
       setErrorMessage(res.error || 'Demo Student sign-in failed.');

@@ -161,10 +161,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setIsLoading(false);
           const msg = error.message.toLowerCase();
           if (msg.includes('email not confirmed')) {
+            // Email confirmation is DISABLED in this project — if Supabase still returns
+            // this error it means the Supabase dashboard still has "Confirm email" ON.
+            // Provide a clear action message so the user (or admin) can fix it.
             return {
               success: false,
               error:
-                'Your account email is not confirmed. Please contact the placement administrator.',
+                'Sign-in blocked: email confirmation is still enabled in Supabase. ' +
+                'Please go to Supabase Dashboard → Authentication → Providers → Email and ' +
+                'turn off "Confirm email". Then run the confirm-users SQL in the README to ' +
+                'unblock existing accounts.',
             };
           }
           if (msg.includes('invalid login credentials')) {
@@ -271,15 +277,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return { success: false, error: error.message };
         }
 
-        // If session is returned immediately (email confirmation disabled), load profile
+        // When email confirmation is DISABLED, Supabase returns a session immediately.
+        // If session is present → user is confirmed and logged in.
         if (authData.session && authData.user) {
           await loadSupabaseProfile(authData.user.id);
           setIsLoading(false);
           return { success: true, requiresEmailConfirmation: false };
         }
 
+        // No session returned → Supabase still requires email confirmation.
+        // The user was created in auth.users but cannot sign in yet.
         setIsLoading(false);
-        return { success: true, requiresEmailConfirmation: true };
+        return {
+          success: true,
+          requiresEmailConfirmation: true,
+        };
       }
 
       // ── Fallback: mock mode (no Supabase credentials) ──

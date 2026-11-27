@@ -85,10 +85,29 @@ By default, the application runs seamlessly out-of-the-box in **Zero-Barrier Loc
    VITE_SUPABASE_URL=https://your-project.supabase.co
    VITE_SUPABASE_ANON_KEY=your-anon-public-key
    ```
-3. Run the schema migrations:
-   - Open Supabase **SQL Editor**.
-   - Copy and paste the contents of `supabase/schema.sql` and run it.
-   - Run `supabase/seed.sql` to populate sample partner companies and jobs.
+3. Run the schema and seed files in Supabase **SQL Editor** in this order:
+   1. `supabase/schema.sql` — creates all tables, indexes, RLS policies, triggers
+   2. `supabase/migration_audit_fixes.sql` — applies security hardening
+   3. `supabase/demo_data.sql` — adds 8 companies, 8 job drives, eligibility rules, and demo data
+
+### ⚠️ 4. Critical: Disable Email Confirmation in Supabase
+
+> **If you skip this step, users cannot sign in after registering.**
+
+1. Open **Supabase Dashboard → Authentication → Providers → Email**
+2. Toggle **OFF** `Confirm email`
+3. Click **Save**
+
+After disabling, run the following in SQL Editor to unblock **existing unconfirmed accounts**:
+
+```sql
+-- Confirm all existing users who registered before you disabled email confirmation
+UPDATE auth.users
+SET email_confirmed_at = NOW(), updated_at = NOW()
+WHERE email_confirmed_at IS NULL;
+```
+
+A full version of this fix with preview queries is in [`supabase/fix_unconfirmed_users.sql`](supabase/fix_unconfirmed_users.sql).
 
 ### 4. Run Development Server
 ```bash

@@ -51,7 +51,10 @@ export const RegisterPage: React.FC = () => {
     if (res.success) {
       if (res.requiresEmailConfirmation) {
         setSuccessMessage(
-          'Registration successful! Please check your email inbox to confirm your account, then sign in.'
+          'Account created! However, Supabase email confirmation is still enabled — ' +
+          'your account cannot sign in until it is confirmed. ' +
+          'Ask your admin to run the confirm-users SQL, or disable "Confirm email" in ' +
+          'Supabase Dashboard → Authentication → Providers → Email.'
         );
       } else {
         navigate('/student/dashboard');
