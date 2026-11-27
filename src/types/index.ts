@@ -76,6 +76,8 @@ export type ApplicationStatus =
   | 'Selected'
   | 'Rejected';
 
+export type OfferStatus = 'Pending' | 'Accepted' | 'Declined';
+
 export interface ApplicationStatusHistory {
   id: string;
   application_id: string;
@@ -97,6 +99,12 @@ export interface Application {
   interview_date?: string;
   updated_at: string;
   status_history?: ApplicationStatusHistory[];
+  offer_status?: OfferStatus;
+  offer_package_lpa?: number;
+  offer_date?: string;
+  offer_details?: string;
+  offer_issued_at?: string;
+  offer_responded_at?: string;
 }
 
 export interface EligibilityResult {
@@ -112,6 +120,10 @@ export interface PlacementAnalytics {
   totalApplications: number;
   shortlistedCount: number;
   selectedCount: number;
+  offersIssued: number;
+  offersAccepted: number;
+  offersPending: number;
+  offersDeclined: number;
   overallPlacementRate: number;
   averagePackageLPA: number;
   highestPackageLPA: number;

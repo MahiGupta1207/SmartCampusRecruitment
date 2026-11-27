@@ -96,7 +96,7 @@ export const AdminDashboard: React.FC = () => {
             {analytics?.overallPlacementRate || 0}%
           </p>
           <p className="text-[11px] text-emerald-600 font-semibold mt-1">
-            {analytics?.selectedCount || 0} students placed
+            {analytics?.offersAccepted || 0} offers accepted • {analytics?.offersPending || 0} pending
           </p>
         </div>
 
@@ -241,7 +241,9 @@ export const AdminDashboard: React.FC = () => {
               <TrendingUp className="w-4 h-4 text-indigo-600" />
               Application Selection Funnel
             </h3>
-            <span className="text-[11px] text-slate-400 font-medium">Live Candidate Flow</span>
+            <span className="text-[11px] text-slate-400 font-medium">
+              Offers: {analytics?.offersIssued || 0} issued ({analytics?.offersAccepted || 0} accepted, {analytics?.offersDeclined || 0} declined)
+            </span>
           </div>
 
           <div className="space-y-3 pt-2">

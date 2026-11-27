@@ -65,9 +65,38 @@ export const StudentDashboard: React.FC = () => {
   const shortlistedCount = applications.filter((a) => a.status === 'Shortlisted').length;
   const interviewCount = applications.filter((a) => a.status === 'Interview Scheduled').length;
   const selectedCount = applications.filter((a) => a.status === 'Selected').length;
+  const pendingOffers = applications.filter((a) => a.offer_status === 'Pending');
+  const acceptedOffersCount = applications.filter((a) => a.offer_status === 'Accepted').length;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+      {/* Pending Offer Alert Banner */}
+      {pendingOffers.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <Sparkles className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <h3 className="text-sm font-bold text-amber-950">
+                You have {pendingOffers.length} Pending Job Offer{pendingOffers.length > 1 ? 's' : ''}!
+              </h3>
+              <p className="text-xs text-amber-800 mt-0.5">
+                {pendingOffers[0].job?.company?.name} ({pendingOffers[0].job?.title}
+                {pendingOffers[0].offer_package_lpa !== undefined
+                  ? ` — ₹${pendingOffers[0].offer_package_lpa} LPA`
+                  : ''}
+                ) is awaiting your response.
+              </p>
+            </div>
+          </div>
+          <Link
+            to="/student/applications"
+            className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl shadow-xs transition whitespace-nowrap text-center"
+          >
+            Review &amp; Respond to Offer
+          </Link>
+        </div>
+      )}
+
       {/* Placed Celebration Banner if Placed */}
       {studentProfile?.is_placed && (
         <div className="relative overflow-hidden bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 rounded-3xl p-6 sm:p-8 text-white shadow-xl">
@@ -197,7 +226,13 @@ export const StudentDashboard: React.FC = () => {
           </div>
           <p className="text-3xl font-extrabold text-slate-900">{selectedCount}</p>
           <p className="text-[11px] text-emerald-600 font-semibold mt-1">
-            {selectedCount > 0 ? 'Placement milestone met' : 'Under evaluation'}
+            {acceptedOffersCount > 0
+              ? `${acceptedOffersCount} accepted`
+              : pendingOffers.length > 0
+                ? `${pendingOffers.length} pending response`
+                : selectedCount > 0
+                  ? 'Selected for offer'
+                  : 'Under evaluation'}
           </p>
         </div>
       </div>

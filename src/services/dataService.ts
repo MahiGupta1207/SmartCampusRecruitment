@@ -696,12 +696,12 @@ class DataService {
           .select(`
             *,
             job:jobs(*, company:companies(*)),
-            student:student_profiles(*, profile:profiles(full_name, email)),
+            student:student_profiles(*, profile:profiles(full_name, email), student_skills(skill_name)),
             status_history:application_status_history(*)
           `)
           .order('applied_at', { ascending: false });
 
-        if (!error && data && data.length > 0) {
+        if (!error && data) {
           return data.map((a: any) => ({
             id: a.id,
             job_id: a.job_id,
@@ -711,7 +711,9 @@ class DataService {
               ...a.student,
               full_name: a.student.profile?.full_name || 'Candidate',
               email: a.student.profile?.email || 'student@campus.edu',
-              skills: [],
+              skills: Array.isArray(a.student.student_skills)
+                ? a.student.student_skills.map((s: any) => s.skill_name)
+                : [],
             } : undefined,
             status: a.status,
             applied_at: a.applied_at,
@@ -719,6 +721,12 @@ class DataService {
             interview_date: a.interview_date,
             updated_at: a.updated_at,
             status_history: a.status_history || [],
+            offer_status: a.offer_status || undefined,
+            offer_package_lpa: a.offer_package_lpa !== null && a.offer_package_lpa !== undefined ? Number(a.offer_package_lpa) : undefined,
+            offer_date: a.offer_date || undefined,
+            offer_details: a.offer_details || undefined,
+            offer_issued_at: a.offer_issued_at || undefined,
+            offer_responded_at: a.offer_responded_at || undefined,
           }));
         }
       } catch (e) {
@@ -753,6 +761,12 @@ class DataService {
             interview_date: a.interview_date,
             updated_at: a.updated_at,
             status_history: a.status_history || [],
+            offer_status: a.offer_status || undefined,
+            offer_package_lpa: a.offer_package_lpa !== null && a.offer_package_lpa !== undefined ? Number(a.offer_package_lpa) : undefined,
+            offer_date: a.offer_date || undefined,
+            offer_details: a.offer_details || undefined,
+            offer_issued_at: a.offer_issued_at || undefined,
+            offer_responded_at: a.offer_responded_at || undefined,
           }));
         }
       } catch (e) {
@@ -872,25 +886,32 @@ class DataService {
     interviewDate?: string
   ): Promise<Application | null> {
     if (isSupabaseConfigured && !applicationId.startsWith('app-')) {
-      try {
-        await supabase
-          .from('applications')
-          .update({
-            status: newStatus,
-            notes: notes || null,
-            interview_date: interviewDate || null,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', applicationId);
-
-        await supabase.from('application_status_history').insert({
-          application_id: applicationId,
+      const { error: updateErr } = await supabase
+        .from('applications')
+        .update({
           status: newStatus,
-          notes: notes || `Status updated to ${newStatus}`,
-        });
-      } catch (err) {
-        console.warn('Supabase status update error:', err);
+          notes: notes || null,
+          interview_date: interviewDate || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', applicationId);
+
+      if (updateErr) {
+        throw new Error(updateErr.message || 'Failed to update application status.');
       }
+
+      const { error: histErr } = await supabase.from('application_status_history').insert({
+        application_id: applicationId,
+        status: newStatus,
+        notes: notes || `Status updated to ${newStatus}`,
+      });
+
+      if (histErr) {
+        console.warn('Status history insert warning:', histErr.message);
+      }
+
+      const apps = await this.getApplications();
+      return apps.find((a) => a.id === applicationId) || null;
     }
 
     const apps = await this.getApplications();
@@ -899,8 +920,8 @@ class DataService {
 
     app.status = newStatus;
     app.updated_at = new Date().toISOString();
-    if (notes) app.notes = notes;
-    if (interviewDate) app.interview_date = interviewDate;
+    if (notes !== undefined) app.notes = notes;
+    if (interviewDate !== undefined) app.interview_date = interviewDate;
 
     if (!app.status_history) app.status_history = [];
     app.status_history.push({
@@ -911,31 +932,160 @@ class DataService {
       created_at: new Date().toISOString(),
     });
 
-    // If selected, automatically mark student as placed
-    if (newStatus === 'Selected' && app.student_id && app.job) {
+    this.setStorageItem(STORAGE_KEYS.APPLICATIONS, apps);
+    return app;
+  }
+
+  public async issueOffer(
+    applicationId: string,
+    offer: {
+      packageLpa: number;
+      offerDate: string;
+      details?: string;
+    }
+  ): Promise<{ success: boolean; message: string; application?: Application }> {
+    if (isNaN(offer.packageLpa) || offer.packageLpa < 0) {
+      return { success: false, message: 'Offer package must be a valid non-negative number.' };
+    }
+    if (!offer.offerDate) {
+      return { success: false, message: 'Offer date is required.' };
+    }
+
+    const now = new Date().toISOString();
+    const historyNote = `Official job offer issued: ₹${offer.packageLpa} LPA (Offer Date: ${offer.offerDate})${offer.details ? ` — ${offer.details}` : ''}`;
+
+    if (isSupabaseConfigured && !applicationId.startsWith('app-')) {
+      const { error: updateErr } = await supabase
+        .from('applications')
+        .update({
+          status: 'Selected',
+          offer_status: 'Pending',
+          offer_package_lpa: offer.packageLpa,
+          offer_date: offer.offerDate,
+          offer_details: offer.details?.trim() || null,
+          offer_issued_at: now,
+          offer_responded_at: null,
+          updated_at: now,
+        })
+        .eq('id', applicationId);
+
+      if (updateErr) {
+        return { success: false, message: updateErr.message || 'Failed to issue offer.' };
+      }
+
+      await supabase.from('application_status_history').insert({
+        application_id: applicationId,
+        status: 'Selected',
+        notes: historyNote,
+      });
+
+      const apps = await this.getApplications();
+      const updated = apps.find((a) => a.id === applicationId);
+      return { success: true, message: 'Job offer issued to candidate!', application: updated };
+    }
+
+    // Local / Demo Fallback
+    const apps = await this.getApplications();
+    const app = apps.find((a) => a.id === applicationId);
+    if (!app) {
+      return { success: false, message: 'Application not found.' };
+    }
+
+    app.status = 'Selected';
+    app.offer_status = 'Pending';
+    app.offer_package_lpa = offer.packageLpa;
+    app.offer_date = offer.offerDate;
+    app.offer_details = offer.details?.trim() || undefined;
+    app.offer_issued_at = now;
+    app.offer_responded_at = undefined;
+    app.updated_at = now;
+
+    if (!app.status_history) app.status_history = [];
+    app.status_history.push({
+      id: 'sh-' + Date.now(),
+      application_id: app.id,
+      status: 'Selected',
+      notes: historyNote,
+      created_at: now,
+    });
+
+    this.setStorageItem(STORAGE_KEYS.APPLICATIONS, apps);
+    return { success: true, message: 'Job offer issued to candidate!', application: app };
+  }
+
+  public async respondToOffer(
+    applicationId: string,
+    decision: 'Accepted' | 'Declined'
+  ): Promise<{ success: boolean; message: string; application?: Application }> {
+    if (isSupabaseConfigured && !applicationId.startsWith('app-')) {
+      const { error } = await supabase.rpc('respond_to_offer', {
+        p_application_id: applicationId,
+        p_decision: decision,
+      });
+
+      if (error) {
+        return { success: false, message: error.message || `Failed to ${decision.toLowerCase()} offer.` };
+      }
+
+      const apps = await this.getApplications();
+      const updated = apps.find((a) => a.id === applicationId);
+      return {
+        success: true,
+        message:
+          decision === 'Accepted'
+            ? 'Congratulations! You have accepted the job offer.'
+            : 'You have declined this job offer.',
+        application: updated,
+      };
+    }
+
+    // Local / Demo Fallback
+    const apps = await this.getApplications();
+    const app = apps.find((a) => a.id === applicationId);
+    if (!app) {
+      return { success: false, message: 'Application not found.' };
+    }
+    if (app.status !== 'Selected' || app.offer_status !== 'Pending') {
+      return { success: false, message: 'This offer is no longer pending.' };
+    }
+
+    const now = new Date().toISOString();
+    app.offer_status = decision;
+    app.offer_responded_at = now;
+    app.updated_at = now;
+
+    if (!app.status_history) app.status_history = [];
+    app.status_history.push({
+      id: 'sh-' + Date.now(),
+      application_id: app.id,
+      status: 'Selected',
+      notes:
+        decision === 'Accepted'
+          ? 'Student accepted the official job offer.'
+          : 'Student declined the official job offer.',
+      created_at: now,
+    });
+
+    if (decision === 'Accepted' && app.student_id && app.job) {
       const students = await this.getStudents();
       const st = students.find((s) => s.id === app.student_id);
       if (st) {
         st.is_placed = true;
         st.current_company = app.job.company ? app.job.company.name : app.job.title;
-        st.package_lpa = app.job.salary_max_lpa || app.job.salary_min_lpa;
+        st.package_lpa = app.offer_package_lpa ?? app.job.salary_max_lpa ?? app.job.salary_min_lpa;
         this.setStorageItem(STORAGE_KEYS.STUDENTS, students);
-
-        if (isSupabaseConfigured && !st.id.startsWith('stud-')) {
-          await supabase
-            .from('student_profiles')
-            .update({
-              is_placed: true,
-              current_company: st.current_company,
-              package_lpa: st.package_lpa,
-            })
-            .eq('id', st.id);
-        }
       }
     }
 
     this.setStorageItem(STORAGE_KEYS.APPLICATIONS, apps);
-    return app;
+    return {
+      success: true,
+      message:
+        decision === 'Accepted'
+          ? 'Congratulations! You have accepted the job offer.'
+          : 'You have declined this job offer.',
+      application: app,
+    };
   }
 
   // =========================================================================
@@ -1027,6 +1177,10 @@ class DataService {
       totalApplications: applications.length,
       shortlistedCount: applications.filter((a) => a.status === 'Shortlisted').length,
       selectedCount: applications.filter((a) => a.status === 'Selected').length,
+      offersIssued: applications.filter((a) => !!a.offer_status).length,
+      offersAccepted: applications.filter((a) => a.offer_status === 'Accepted').length,
+      offersPending: applications.filter((a) => a.offer_status === 'Pending').length,
+      offersDeclined: applications.filter((a) => a.offer_status === 'Declined').length,
       overallPlacementRate: Number(overallRate.toFixed(1)),
       averagePackageLPA: Number(avgPackage.toFixed(1)),
       highestPackageLPA: Number(highestPackage.toFixed(1)),
@@ -1064,13 +1218,15 @@ class DataService {
   }
 
   public generateApplicationsCSV(applications: Application[]): string {
-    const headers = ['Student Name', 'Enrollment No', 'Company', 'Job Title', 'Status', 'Applied Date', 'Interview Date'];
+    const headers = ['Student Name', 'Enrollment No', 'Company', 'Job Title', 'Status', 'Offer Status', 'Offered Package (LPA)', 'Applied Date', 'Interview Date'];
     const rows = applications.map((a) => [
       this.sanitizeCsvCell(a.student?.full_name || 'N/A'),
       this.sanitizeCsvCell(a.student?.enrollment_no || 'N/A'),
       this.sanitizeCsvCell(a.job?.company?.name || 'N/A'),
       this.sanitizeCsvCell(a.job?.title || 'N/A'),
       this.sanitizeCsvCell(a.status),
+      this.sanitizeCsvCell(a.offer_status || 'Not Issued'),
+      a.offer_package_lpa ?? '',
       this.sanitizeCsvCell(new Date(a.applied_at).toLocaleDateString()),
       this.sanitizeCsvCell(a.interview_date ? new Date(a.interview_date).toLocaleDateString() : 'N/A'),
     ]);

@@ -1,37 +1,57 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { dataService } from '../../services/dataService';
-import { Application, ApplicationStatus } from '../../types';
-import { StatusBadge } from '../../components/common/Badge';
+import { Application } from '../../types';
+import { StatusBadge, OfferStatusBadge } from '../../components/common/Badge';
 import { Modal } from '../../components/common/Modal';
 import {
   FileCheck2,
   Calendar,
-  Clock,
   History,
-  Building2,
   AlertCircle,
-  ExternalLink,
   PartyPopper,
   CheckCircle2,
+  XCircle,
+  Award,
 } from 'lucide-react';
 
 export const StudentApplications: React.FC = () => {
-  const { studentProfile } = useAuth();
+  const { studentProfile, updateProfile } = useAuth();
   const [applications, setApplications] = useState<Application[]>([]);
   const [selectedStatus, setSelectedStatus] = useState<string>('All');
   const [selectedApp, setSelectedApp] = useState<Application | null>(null);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState<boolean>(false);
+  const [respondingAppId, setRespondingAppId] = useState<string | null>(null);
+  const [offerFeedback, setOfferFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const fetchApps = async () => {
+    if (studentProfile) {
+      const apps = await dataService.getStudentApplications(studentProfile.id);
+      setApplications(apps);
+    }
+  };
 
   useEffect(() => {
-    const fetchApps = async () => {
-      if (studentProfile) {
-        const apps = await dataService.getStudentApplications(studentProfile.id);
-        setApplications(apps);
-      }
-    };
     fetchApps();
   }, [studentProfile]);
+
+  const handleOfferDecision = async (app: Application, decision: 'Accepted' | 'Declined') => {
+    setOfferFeedback(null);
+    setRespondingAppId(app.id);
+    const res = await dataService.respondToOffer(app.id, decision);
+    setRespondingAppId(null);
+
+    if (res.success) {
+      await fetchApps();
+      if (decision === 'Accepted' && studentProfile) {
+        // Trigger a harmless profile refresh so StudentDashboard placement banner updates
+        await updateProfile({});
+      }
+      setOfferFeedback({ type: 'success', text: res.message });
+    } else {
+      setOfferFeedback({ type: 'error', text: res.message });
+    }
+  };
 
   const filteredApps = applications.filter((app) => {
     if (selectedStatus === 'All') return true;
@@ -64,6 +84,32 @@ export const StudentApplications: React.FC = () => {
           Track the live progression of your applications through recruiter review, coding rounds, interviews, and final offers.
         </p>
       </div>
+
+      {offerFeedback && (
+        <div
+          className={`p-3.5 rounded-xl border text-xs flex items-center justify-between gap-2 ${
+            offerFeedback.type === 'success'
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+              : 'bg-rose-50 border-rose-200 text-rose-800'
+          }`}
+        >
+          <div className="flex items-center gap-2 font-semibold">
+            {offerFeedback.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            ) : (
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+            )}
+            <span>{offerFeedback.text}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setOfferFeedback(null)}
+            className="font-bold opacity-70 hover:opacity-100"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Filter Tabs */}
       <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-3">
@@ -131,7 +177,10 @@ export const StudentApplications: React.FC = () => {
                 </div>
 
                 <div className="flex flex-wrap sm:flex-col items-start sm:items-end gap-2">
-                  <StatusBadge status={app.status} />
+                  <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                    <StatusBadge status={app.status} />
+                    {app.offer_status && <OfferStatusBadge status={app.offer_status} />}
+                  </div>
                   <button
                     onClick={() => handleOpenHistory(app)}
                     className="inline-flex items-center gap-1 text-xs font-bold text-indigo-600 hover:text-indigo-800"
@@ -143,18 +192,71 @@ export const StudentApplications: React.FC = () => {
 
               {/* Status Specific Banners */}
               {app.status === 'Selected' && (
-                <div className="p-4 rounded-xl bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <PartyPopper className="w-6 h-6 text-emerald-600 shrink-0" />
-                    <div>
-                      <h4 className="text-xs font-bold text-emerald-950">
-                        Official Placement Offer Rolled Out!
-                      </h4>
-                      <p className="text-xs text-emerald-800">
-                        Congratulations! The company recruiters have officially extended a placement offer.
-                        {app.notes && <span> Notes: &quot;{app.notes}&quot;</span>}
-                      </p>
+                <div className="p-4 rounded-xl bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-start gap-3">
+                      <PartyPopper className="w-6 h-6 text-emerald-600 shrink-0 mt-0.5" />
+                      <div>
+                        <h4 className="text-xs font-bold text-emerald-950 flex items-center gap-2">
+                          <span>
+                            {app.offer_status
+                              ? 'Official Placement Offer Extended!'
+                              : 'Congratulations! You have been Selected'}
+                          </span>
+                          {app.offer_status && <OfferStatusBadge status={app.offer_status} />}
+                        </h4>
+                        <p className="text-xs text-emerald-800 mt-0.5">
+                          {app.offer_status ? (
+                            <>
+                              <strong>{app.job?.company?.name}</strong> has extended an offer for{' '}
+                              <strong>{app.job?.title}</strong>
+                              {app.offer_package_lpa !== undefined && (
+                                <> at <strong>₹{app.offer_package_lpa} LPA</strong></>
+                              )}
+                              {app.offer_date && <> (Offer Date: {app.offer_date})</>}.
+                            </>
+                          ) : (
+                            <>
+                              You have been selected by recruiters. The Placement Office will issue your formal offer details shortly.
+                            </>
+                          )}
+                        </p>
+                        {app.offer_details && (
+                          <p className="text-xs text-emerald-900 bg-white/70 px-3 py-2 rounded-lg border border-emerald-200/70 mt-2">
+                            <Award className="w-3.5 h-3.5 inline mr-1 text-emerald-600" />
+                            {app.offer_details}
+                          </p>
+                        )}
+                        {app.notes && !app.offer_details && (
+                          <p className="text-xs text-emerald-800 mt-1">
+                            Notes: &quot;{app.notes}&quot;
+                          </p>
+                        )}
+                      </div>
                     </div>
+
+                    {app.offer_status === 'Pending' && (
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          disabled={respondingAppId === app.id}
+                          onClick={() => handleOfferDecision(app, 'Accepted')}
+                          className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition disabled:opacity-50"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          Accept Offer
+                        </button>
+                        <button
+                          type="button"
+                          disabled={respondingAppId === app.id}
+                          onClick={() => handleOfferDecision(app, 'Declined')}
+                          className="inline-flex items-center gap-1.5 px-4 py-2 bg-white hover:bg-rose-50 text-rose-700 border border-rose-200 font-bold text-xs rounded-xl transition disabled:opacity-50"
+                        >
+                          <XCircle className="w-3.5 h-3.5" />
+                          Decline
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}

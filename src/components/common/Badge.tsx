@@ -1,6 +1,6 @@
 import React from 'react';
 import { cn } from '../../lib/utils';
-import { ApplicationStatus } from '../../types';
+import { ApplicationStatus, OfferStatus } from '../../types';
 
 interface BadgeProps {
   children: React.ReactNode;
@@ -49,6 +49,22 @@ export const StatusBadge: React.FC<{ status: ApplicationStatus | string; classNa
       return <Badge variant="success" className={cn("border-emerald-400 bg-emerald-100 text-emerald-900 font-bold", className)}>Selected 🎉</Badge>;
     case 'Rejected':
       return <Badge variant="danger" className={className}>Not Shortlisted</Badge>;
+    default:
+      return <Badge variant="default" className={className}>{status}</Badge>;
+  }
+};
+
+export const OfferStatusBadge: React.FC<{ status: OfferStatus | string; className?: string }> = ({
+  status,
+  className,
+}) => {
+  switch (status) {
+    case 'Pending':
+      return <Badge variant="warning" className={cn('font-bold', className)}>Offer: Pending</Badge>;
+    case 'Accepted':
+      return <Badge variant="success" className={cn('border-emerald-400 bg-emerald-100 text-emerald-900 font-bold', className)}>Offer: Accepted</Badge>;
+    case 'Declined':
+      return <Badge variant="danger" className={cn('font-bold', className)}>Offer: Declined</Badge>;
     default:
       return <Badge variant="default" className={className}>{status}</Badge>;
   }

@@ -53,7 +53,45 @@ canApplyAgain().then(async () => {
     throw new Error('CSV Generation failed');
   }
 
-  console.log('\n✅ ALL 4 CORE DOMAIN TEST SUITES PASSED FLAWLESSLY!\n');
+  // 5. Complete Application -> Offer Issuance -> Acceptance/Decline Workflow Test
+  console.log('\n--- VERIFYING APPLICATION & OFFER WORKFLOW ---');
+  const testApp = await dataService.applyToJob(studentHigh, INITIAL_JOBS[1]);
+  if (!testApp.success || !testApp.application) {
+    throw new Error('Failed to create test application for offer workflow: ' + testApp.message);
+  }
+  const appId = testApp.application.id;
+
+  const shortlisted = await dataService.updateApplicationStatus(appId, 'Shortlisted', 'Cleared OA');
+  if (!shortlisted || shortlisted.status !== 'Shortlisted') {
+    throw new Error('Shortlist transition failed');
+  }
+
+  const selected = await dataService.updateApplicationStatus(appId, 'Selected', 'Cleared final round');
+  if (!selected || selected.status !== 'Selected') {
+    throw new Error('Select transition failed');
+  }
+
+  const offerRes = await dataService.issueOffer(appId, {
+    packageLpa: 28,
+    offerDate: '2026-12-01',
+    details: 'Bangalore office, joining July 2027',
+  });
+  if (!offerRes.success || offerRes.application?.offer_status !== 'Pending') {
+    throw new Error('Offer issuance failed: ' + offerRes.message);
+  }
+
+  const acceptRes = await dataService.respondToOffer(appId, 'Accepted');
+  if (!acceptRes.success || acceptRes.application?.offer_status !== 'Accepted') {
+    throw new Error('Offer acceptance failed: ' + acceptRes.message);
+  }
+
+  const updatedAnalytics = await dataService.getAnalytics();
+  console.log('Offers issued:', updatedAnalytics.offersIssued, 'Accepted:', updatedAnalytics.offersAccepted);
+  if (updatedAnalytics.offersAccepted < 1) {
+    throw new Error('Analytics did not reflect accepted offer');
+  }
+
+  console.log('\n✅ ALL 5 CORE DOMAIN TEST SUITES PASSED FLAWLESSLY!\n');
 }).catch((err) => {
   console.error('Logic verification failed:', err);
   process.exit(1);
