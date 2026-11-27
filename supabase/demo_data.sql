@@ -293,7 +293,7 @@ ON CONFLICT (student_id, skill_name) DO NOTHING;
 -- Priya's applications to Zomato (shortlisted) and TCS (applied)
 INSERT INTO public.applications (id, job_id, student_id, status, applied_at, notes)
   SELECT
-    'app11111-1111-1111-1111-111111111111'::UUID,
+    'a9911111-1111-1111-1111-111111111111'::UUID,
     'a5555555-5555-5555-5555-555555555555',
     p.id,
     'Shortlisted',
@@ -306,7 +306,7 @@ ON CONFLICT (job_id, student_id) DO NOTHING;
 
 INSERT INTO public.applications (id, job_id, student_id, status, applied_at)
   SELECT
-    'app22222-2222-2222-2222-222222222222'::UUID,
+    'a9922222-2222-2222-2222-222222222222'::UUID,
     'a6666666-6666-6666-6666-666666666666',
     p.id,
     'Applied',
@@ -319,23 +319,23 @@ ON CONFLICT (job_id, student_id) DO NOTHING;
 -- Application status history for the shortlisted application
 INSERT INTO public.application_status_history (id, application_id, status, notes)
   SELECT
-    'hist1111-1111-1111-1111-111111111111'::UUID,
-    'app11111-1111-1111-1111-111111111111',
+    'bb551111-1111-1111-1111-111111111111'::UUID,
+    'a9911111-1111-1111-1111-111111111111',
     'Applied',
     'Initial application received'
   WHERE EXISTS (
-    SELECT 1 FROM public.applications WHERE id = 'app11111-1111-1111-1111-111111111111'
+    SELECT 1 FROM public.applications WHERE id = 'a9911111-1111-1111-1111-111111111111'
   )
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO public.application_status_history (id, application_id, status, notes)
   SELECT
-    'hist2222-2222-2222-2222-222222222222'::UUID,
-    'app11111-1111-1111-1111-111111111111',
+    'bb552222-2222-2222-2222-222222222222'::UUID,
+    'a9911111-1111-1111-1111-111111111111',
     'Shortlisted',
     'Shortlisted based on CGPA and React proficiency'
   WHERE EXISTS (
-    SELECT 1 FROM public.applications WHERE id = 'app11111-1111-1111-1111-111111111111'
+    SELECT 1 FROM public.applications WHERE id = 'a9911111-1111-1111-1111-111111111111'
   )
 ON CONFLICT (id) DO NOTHING;
 
