@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { dataService } from '../../services/dataService';
+import { openAccessibleResume } from '../../lib/supabase';
 import { StudentProfile, Application } from '../../types';
 import { Modal } from '../../components/common/Modal';
 import {
@@ -346,14 +347,13 @@ export const AdminStudents: React.FC = () => {
             {/* Resume and links */}
             <div className="flex flex-wrap gap-3 text-xs font-bold">
               {selectedStudent.resume_url && (
-                <a
-                  href={selectedStudent.resume_url}
-                  target="_blank"
-                  rel="noreferrer"
+                <button
+                  type="button"
+                  onClick={() => openAccessibleResume(selectedStudent.resume_url!)}
                   className="inline-flex items-center gap-1.5 px-3 py-2 bg-indigo-50 text-indigo-700 rounded-xl hover:bg-indigo-100 transition"
                 >
                   <FileText className="w-4 h-4" /> Download Resume / CV <ExternalLink className="w-3.5 h-3.5" />
-                </a>
+                </button>
               )}
               {selectedStudent.linkedin_url && (
                 <a

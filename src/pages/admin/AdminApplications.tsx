@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { dataService } from '../../services/dataService';
+import { openAccessibleResume } from '../../lib/supabase';
 import { Application, Job, ApplicationStatus } from '../../types';
 import { StatusBadge } from '../../components/common/Badge';
 import { Modal } from '../../components/common/Modal';
@@ -227,14 +228,13 @@ export const AdminApplications: React.FC = () => {
 
                     <td className="px-6 py-4">
                       {app.student?.resume_url ? (
-                        <a
-                          href={app.student.resume_url}
-                          target="_blank"
-                          rel="noreferrer"
+                        <button
+                          type="button"
+                          onClick={() => openAccessibleResume(app.student!.resume_url!)}
                           className="inline-flex items-center gap-1 font-bold text-indigo-600 hover:text-indigo-800"
                         >
                           View CV <ExternalLink className="w-3 h-3" />
-                        </a>
+                        </button>
                       ) : (
                         <span className="text-slate-400">Not uploaded</span>
                       )}

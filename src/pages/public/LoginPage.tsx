@@ -69,16 +69,24 @@ export const LoginPage: React.FC = () => {
   };
 
   const handleQuickDemo = async (role: 'student' | 'admin') => {
-    if (isSupabaseConfigured) return;
-    setIsLoading(true);
     setErrorMessage('');
+    setInfoMessage('');
     const demoEmail = role === 'admin' ? 'placement.officer@campus.edu' : 'priya.sharma@campus.edu';
+    const demoPass = role === 'admin' ? 'AdminPass123!' : 'DemoPass123!';
     setEmail(demoEmail);
-    setPassword('DemoPass123!');
-    const res = await login(demoEmail, 'DemoPass123!');
+    setPassword(demoPass);
+
+    setIsLoading(true);
+    const res = await login(demoEmail, demoPass);
     setIsLoading(false);
+
     if (res.success) {
-      navigate(role === 'admin' ? '/admin/dashboard' : '/student/dashboard');
+      navigate(res.role === 'admin' ? '/admin/dashboard' : '/student/dashboard');
+    } else {
+      setErrorMessage(
+        res.error ||
+          `Demo ${role} account is not set up in Supabase Auth yet. Register ${demoEmail} or create it in Supabase Authentication.`
+      );
     }
   };
 
@@ -98,39 +106,39 @@ export const LoginPage: React.FC = () => {
           </p>
         </div>
 
-        {/* Quick Demo Access Box (Only shown in offline mock mode when Supabase is not configured) */}
-        {!isSupabaseConfigured && (
-          <div className="bg-gradient-to-br from-indigo-50/80 to-violet-50/80 border border-indigo-100 rounded-2xl p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-indigo-900 flex items-center gap-1.5">
-                <ShieldCheck className="w-4 h-4 text-indigo-600" />
-                1-Click Instant Evaluation Demo
-              </span>
-              <span className="text-[10px] font-semibold bg-indigo-200/60 text-indigo-800 px-2 py-0.5 rounded-full">
-                Demo Mode
-              </span>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2.5">
-              <button
-                type="button"
-                onClick={() => handleQuickDemo('student')}
-                className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-white hover:bg-slate-50 text-indigo-950 font-bold text-xs rounded-xl border border-indigo-200/80 shadow-xs transition hover:scale-[1.02]"
-              >
-                <UserCheck className="w-3.5 h-3.5 text-indigo-600" />
-                Demo Student
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickDemo('admin')}
-                className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-white hover:bg-slate-50 text-indigo-950 font-bold text-xs rounded-xl border border-indigo-200/80 shadow-xs transition hover:scale-[1.02]"
-              >
-                <ShieldCheck className="w-3.5 h-3.5 text-violet-600" />
-                Demo Admin / T&P
-              </button>
-            </div>
+        {/* Quick Demo Access Box (Authenticates via real Supabase Auth when configured) */}
+        <div className="bg-gradient-to-br from-indigo-50/80 to-violet-50/80 border border-indigo-100 rounded-2xl p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-indigo-900 flex items-center gap-1.5">
+              <ShieldCheck className="w-4 h-4 text-indigo-600" />
+              Demo Sign-In Accounts
+            </span>
+            <span className="text-[10px] font-semibold bg-indigo-200/60 text-indigo-800 px-2 py-0.5 rounded-full">
+              {isSupabaseConfigured ? 'Verified Auth' : 'Demo Mode'}
+            </span>
           </div>
-        )}
+
+          <div className="grid grid-cols-2 gap-2.5">
+            <button
+              type="button"
+              disabled={isLoading}
+              onClick={() => handleQuickDemo('student')}
+              className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-white hover:bg-slate-50 text-indigo-950 font-bold text-xs rounded-xl border border-indigo-200/80 shadow-xs transition hover:scale-[1.02] disabled:opacity-50"
+            >
+              <UserCheck className="w-3.5 h-3.5 text-indigo-600" />
+              Demo Student
+            </button>
+            <button
+              type="button"
+              disabled={isLoading}
+              onClick={() => handleQuickDemo('admin')}
+              className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-white hover:bg-slate-50 text-indigo-950 font-bold text-xs rounded-xl border border-indigo-200/80 shadow-xs transition hover:scale-[1.02] disabled:opacity-50"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-violet-600" />
+              Demo Admin / T&amp;P
+            </button>
+          </div>
+        </div>
 
         {/* Form Card */}
         <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm space-y-5">

@@ -103,14 +103,41 @@ export async function uploadResumeToStorage(
       return { url: null, error: uploadError.message };
     }
 
-    const { data: { publicUrl } } = supabase.storage
-      .from('resumes')
-      .getPublicUrl(filePath);
-
-    return { url: publicUrl, error: null };
+    // Store canonical private reference; signed URLs are generated on demand
+    return { url: `storage://resumes/${filePath}`, error: null };
   } catch (err: any) {
     return { url: null, error: err?.message || 'Upload failed' };
   }
+}
+
+/**
+ * Resolve a stored resume reference (private storage://resumes/... or legacy Supabase URL)
+ * to a short-lived signed URL, or open external links directly.
+ */
+export async function openAccessibleResume(resumeUrl: string): Promise<void> {
+  if (!resumeUrl) return;
+
+  let storagePath: string | null = null;
+  if (resumeUrl.startsWith('storage://resumes/')) {
+    storagePath = resumeUrl.replace('storage://resumes/', '');
+  } else {
+    const match = resumeUrl.match(/\/storage\/v1\/object\/(?:public|sign)\/resumes\/([^?]+)/);
+    if (match?.[1]) {
+      storagePath = decodeURIComponent(match[1]);
+    }
+  }
+
+  if (storagePath && isSupabaseConfigured) {
+    const { data, error } = await supabase.storage
+      .from('resumes')
+      .createSignedUrl(storagePath, 300);
+    if (!error && data?.signedUrl) {
+      window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
+  }
+
+  window.open(resumeUrl, '_blank', 'noopener,noreferrer');
 }
 
 const ALLOWED_AVATAR_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp'];

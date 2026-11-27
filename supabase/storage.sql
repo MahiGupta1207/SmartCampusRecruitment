@@ -3,16 +3,21 @@
 -- Run this in Supabase SQL Editor if creating the bucket via SQL
 -- =====================================================================
 
--- 1. Create the 'resumes' storage bucket if it doesn't already exist
+-- 1. Create the 'resumes' storage bucket as PRIVATE (owner & admin access only)
 INSERT INTO storage.buckets (id, name, public)
-VALUES ('resumes', 'resumes', true)
-ON CONFLICT (id) DO NOTHING;
+VALUES ('resumes', 'resumes', false)
+ON CONFLICT (id) DO UPDATE SET public = false;
 
 -- 2. Storage Policies for 'resumes' bucket (owner-scoped folders)
 DROP POLICY IF EXISTS "Public Read Access for Resumes" ON storage.objects;
-CREATE POLICY "Public Read Access for Resumes"
+DROP POLICY IF EXISTS "Owners and admins can view resumes" ON storage.objects;
+CREATE POLICY "Owners and admins can view resumes"
   ON storage.objects FOR SELECT
-  USING (bucket_id = 'resumes');
+  USING (
+    bucket_id = 'resumes' AND
+    auth.uid() IS NOT NULL AND
+    ((storage.foldername(name))[1] = auth.uid()::text OR public.is_admin())
+  );
 
 -- Allow authenticated students to upload resumes only to their own <uid>/ folder (or admins)
 DROP POLICY IF EXISTS "Authenticated users can upload resumes" ON storage.objects;

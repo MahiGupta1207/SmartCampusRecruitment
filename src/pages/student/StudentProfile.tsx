@@ -17,7 +17,12 @@ import {
   Camera,
   Image as ImageIcon,
 } from 'lucide-react';
-import { uploadResumeToStorage, uploadAvatarToStorage, isSupabaseConfigured } from '../../lib/supabase';
+import {
+  uploadResumeToStorage,
+  uploadAvatarToStorage,
+  openAccessibleResume,
+  isSupabaseConfigured,
+} from '../../lib/supabase';
 
 export const StudentProfile: React.FC = () => {
   const { user, studentProfile, updateProfile } = useAuth();
@@ -126,6 +131,7 @@ export const StudentProfile: React.FC = () => {
 
   const isValidHttpUrl = (val: string) => {
     if (!val.trim()) return true;
+    if (val.trim().startsWith('storage://resumes/')) return true;
     try {
       const parsed = new URL(val.trim());
       return parsed.protocol === 'http:' || parsed.protocol === 'https:';
@@ -493,15 +499,14 @@ export const StudentProfile: React.FC = () => {
                 />
               </label>
               {formData.resume_url && (
-                <a
-                  href={formData.resume_url}
-                  target="_blank"
-                  rel="noreferrer"
+                <button
+                  type="button"
+                  onClick={() => openAccessibleResume(formData.resume_url)}
                   className="px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl flex items-center justify-center shrink-0"
-                  title="Test Link"
+                  title="Open Resume"
                 >
                   <ExternalLink className="w-4 h-4" />
-                </a>
+                </button>
               )}
             </div>
             {formData.resume_url && (
