@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { isSupabaseConfigured } from '../../lib/supabase';
 import {
   GraduationCap,
   Briefcase,
@@ -205,8 +206,8 @@ export const Navbar: React.FC = () => {
 
           {/* Right Action Buttons */}
           <div className="hidden md:flex items-center gap-3">
-            {/* Quick Demo Switcher Button for instant testability */}
-            {user && (
+            {/* Quick Demo Switcher Button (disabled when Supabase Auth is active) */}
+            {!isSupabaseConfigured && user && (
               <button
                 onClick={handleToggleRole}
                 title="Click to toggle between Student view and Admin view"
@@ -282,13 +283,15 @@ export const Navbar: React.FC = () => {
                       </Link>
                     )}
 
-                    <button
-                      onClick={handleToggleRole}
-                      className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-amber-700 hover:bg-amber-50 text-left font-medium"
-                    >
-                      <ArrowRightLeft className="w-4 h-4 text-amber-600" />
-                      Switch to {user.role === 'admin' ? 'Student' : 'Admin'} Mode
-                    </button>
+                    {!isSupabaseConfigured && (
+                      <button
+                        onClick={handleToggleRole}
+                        className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-amber-700 hover:bg-amber-50 text-left font-medium"
+                      >
+                        <ArrowRightLeft className="w-4 h-4 text-amber-600" />
+                        Switch to {user.role === 'admin' ? 'Student' : 'Admin'} Mode
+                      </button>
+                    )}
 
                     <div className="border-t border-slate-100 mt-1 pt-1">
                       <button
@@ -307,7 +310,7 @@ export const Navbar: React.FC = () => {
 
           {/* Mobile Menu Button */}
           <div className="flex md:hidden items-center gap-2">
-            {user && (
+            {!isSupabaseConfigured && user && (
               <button
                 onClick={handleToggleRole}
                 className="p-1.5 text-xs font-semibold bg-amber-50 border border-amber-200 text-amber-800 rounded-lg"

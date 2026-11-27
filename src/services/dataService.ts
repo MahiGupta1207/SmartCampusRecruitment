@@ -13,7 +13,7 @@ import {
   INITIAL_STUDENTS,
   INITIAL_APPLICATIONS,
 } from '../data/mockData';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { supabase, isSupabaseConfigured, createEphemeralAuthClient } from '../lib/supabase';
 
 const STORAGE_KEYS = {
   COMPANIES: 'campushire_companies',
@@ -253,6 +253,10 @@ class DataService {
   }
 
   public async saveJob(jobData: Partial<Job>): Promise<Job> {
+    const minSal = Math.max(0, Number(jobData.salary_min_lpa) || 0);
+    const maxSal = Math.max(minSal, Number(jobData.salary_max_lpa) || minSal);
+    jobData = { ...jobData, salary_min_lpa: minSal, salary_max_lpa: maxSal };
+
     if (isSupabaseConfigured) {
       try {
         let savedJobId = jobData.id;
@@ -508,8 +512,8 @@ class DataService {
             .eq('id', studentId);
         }
 
-        // Upsert into student_profiles
-        await supabase.from('student_profiles').upsert({
+        // Upsert into student_profiles (never include placement fields from student profile edits)
+        const { error: spError } = await supabase.from('student_profiles').upsert({
           id: studentId,
           enrollment_no: updates.enrollment_no,
           phone: updates.phone,
@@ -522,10 +526,10 @@ class DataService {
           github_url: updates.github_url,
           portfolio_url: updates.portfolio_url,
           bio: updates.bio,
-          is_placed: updates.is_placed ?? false,
-          current_company: updates.current_company,
-          package_lpa: updates.package_lpa,
         });
+        if (spError) {
+          throw new Error(spError.message);
+        }
 
         // Update skills if provided
         if (updates.skills && Array.isArray(updates.skills)) {
@@ -570,6 +574,111 @@ class DataService {
     students.push(newStudent);
     this.setStorageItem(STORAGE_KEYS.STUDENTS, students);
     return newStudent;
+  }
+
+  public async adminRegisterStudent(input: {
+    full_name: string;
+    email: string;
+    password: string;
+    enrollment_no: string;
+    branch: string;
+    graduation_year: number;
+    cgpa: number;
+    backlogs?: number;
+    phone?: string;
+  }): Promise<{ success: boolean; error?: string; message?: string }> {
+    if (!input.full_name.trim() || !input.email.trim() || !input.enrollment_no.trim()) {
+      return { success: false, error: 'Full name, email, and enrollment number are required.' };
+    }
+    if (!input.password || input.password.length < 6) {
+      return { success: false, error: 'Temporary password must be at least 6 characters.' };
+    }
+    if (isNaN(input.cgpa) || input.cgpa < 0 || input.cgpa > 10) {
+      return { success: false, error: 'CGPA must be between 0.00 and 10.00.' };
+    }
+    if ((input.backlogs ?? 0) < 0) {
+      return { success: false, error: 'Backlogs cannot be negative.' };
+    }
+
+    if (isSupabaseConfigured) {
+      try {
+        const ephemeralClient = createEphemeralAuthClient();
+        const { data: authData, error } = await ephemeralClient.auth.signUp({
+          email: input.email.trim(),
+          password: input.password,
+          options: {
+            data: {
+              full_name: input.full_name.trim(),
+              role: 'student',
+              enrollment_no: input.enrollment_no.trim(),
+              branch: input.branch,
+              graduation_year: input.graduation_year,
+              cgpa: input.cgpa,
+            },
+          },
+        });
+
+        if (error) {
+          if (error.message.includes('already registered') || error.message.includes('already been registered')) {
+            return { success: false, error: 'A student with this email is already registered.' };
+          }
+          if (error.message.includes('Database error')) {
+            return {
+              success: false,
+              error: 'Database error while registering student. This enrollment number may already exist.',
+            };
+          }
+          return { success: false, error: error.message };
+        }
+
+        if (authData.user) {
+          // Update optional fields (phone, backlogs) using Admin's authenticated client
+          if (input.phone || (input.backlogs !== undefined && input.backlogs > 0)) {
+            await supabase
+              .from('student_profiles')
+              .update({
+                phone: input.phone?.trim() || null,
+                backlogs: input.backlogs ?? 0,
+              })
+              .eq('id', authData.user.id);
+          }
+
+          return {
+            success: true,
+            message: authData.session
+              ? `Student ${input.full_name} registered and ready to sign in.`
+              : `Student ${input.full_name} registered! A confirmation email was sent to ${input.email}.`,
+          };
+        }
+
+        return { success: false, error: 'Could not register student.' };
+      } catch (err: any) {
+        return { success: false, error: err?.message || 'Registration failed.' };
+      }
+    }
+
+    // Local / Mock fallback
+    const students = await this.getStudents();
+    if (students.some((s) => s.email.toLowerCase() === input.email.trim().toLowerCase())) {
+      return { success: false, error: 'A student with this email already exists.' };
+    }
+    const newId = 'stud-' + Date.now();
+    const newStudent: StudentProfile & { full_name: string; email: string } = {
+      id: newId,
+      full_name: input.full_name.trim(),
+      email: input.email.trim(),
+      enrollment_no: input.enrollment_no.trim(),
+      phone: input.phone?.trim() || '',
+      branch: input.branch,
+      graduation_year: input.graduation_year,
+      cgpa: input.cgpa,
+      backlogs: input.backlogs ?? 0,
+      is_placed: false,
+      skills: ['Problem Solving'],
+    };
+    students.unshift(newStudent);
+    this.setStorageItem(STORAGE_KEYS.STUDENTS, students);
+    return { success: true, message: `Student ${input.full_name} added to directory.` };
   }
 
   // =========================================================================
@@ -686,16 +795,28 @@ class DataService {
           .select()
           .single();
 
-        if (!insertError && newApp) {
-          await supabase.from('application_status_history').insert({
-            application_id: newApp.id,
-            status: 'Applied',
-            notes: 'Application registered in Supabase database.',
-          });
+        if (insertError) {
+          return {
+            success: false,
+            message: insertError.message || 'Could not submit application.',
+          };
+        }
+
+        if (newApp) {
+          // Status history is also inserted by DB trigger; ignore RLS error if trigger handles it
+          try {
+            await supabase.from('application_status_history').insert({
+              application_id: newApp.id,
+              status: 'Applied',
+              notes: 'Application registered in Supabase database.',
+            });
+          } catch {
+            // Handled by database trigger
+          }
 
           return {
             success: true,
-            message: 'Application submitted successfully to Supabase!',
+            message: 'Application submitted successfully!',
             application: {
               ...newApp,
               job,
@@ -704,7 +825,7 @@ class DataService {
           };
         }
       } catch (err: any) {
-        console.warn('Supabase apply error, falling back locally:', err);
+        return { success: false, message: err?.message || 'Failed to submit application.' };
       }
     }
 
@@ -915,17 +1036,24 @@ class DataService {
   // =========================================================================
   // EXPORT CSV UTILITIES
   // =========================================================================
+  private sanitizeCsvCell(value: unknown): string {
+    const str = String(value ?? '');
+    // Prevent CSV formula injection (=, +, -, @, tab, CR)
+    const formulaSafe = /^[=+\-@\t\r]/.test(str) ? `'${str}` : str;
+    return `"${formulaSafe.replace(/"/g, '""')}"`;
+  }
+
   public generatePlacementsCSV(students: (StudentProfile & { full_name: string; email: string })[]): string {
     const headers = ['Full Name', 'Enrollment No', 'Email', 'Branch', 'CGPA', 'Grad Year', 'Placed Status', 'Company', 'Package (LPA)'];
     const rows = students.map((s) => [
-      `"${s.full_name}"`,
-      `"${s.enrollment_no}"`,
-      `"${s.email}"`,
-      `"${s.branch}"`,
+      this.sanitizeCsvCell(s.full_name),
+      this.sanitizeCsvCell(s.enrollment_no),
+      this.sanitizeCsvCell(s.email),
+      this.sanitizeCsvCell(s.branch),
       s.cgpa,
       s.graduation_year,
       s.is_placed ? 'Placed' : 'Unplaced',
-      `"${s.current_company || 'N/A'}"`,
+      this.sanitizeCsvCell(s.current_company || 'N/A'),
       s.package_lpa || 0,
     ]);
     return [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
@@ -934,13 +1062,13 @@ class DataService {
   public generateApplicationsCSV(applications: Application[]): string {
     const headers = ['Student Name', 'Enrollment No', 'Company', 'Job Title', 'Status', 'Applied Date', 'Interview Date'];
     const rows = applications.map((a) => [
-      `"${a.student?.full_name || 'N/A'}"`,
-      `"${a.student?.enrollment_no || 'N/A'}"`,
-      `"${a.job?.company?.name || 'N/A'}"`,
-      `"${a.job?.title || 'N/A'}"`,
-      `"${a.status}"`,
-      `"${new Date(a.applied_at).toLocaleDateString()}"`,
-      `"${a.interview_date ? new Date(a.interview_date).toLocaleDateString() : 'N/A'}"`,
+      this.sanitizeCsvCell(a.student?.full_name || 'N/A'),
+      this.sanitizeCsvCell(a.student?.enrollment_no || 'N/A'),
+      this.sanitizeCsvCell(a.job?.company?.name || 'N/A'),
+      this.sanitizeCsvCell(a.job?.title || 'N/A'),
+      this.sanitizeCsvCell(a.status),
+      this.sanitizeCsvCell(new Date(a.applied_at).toLocaleDateString()),
+      this.sanitizeCsvCell(a.interview_date ? new Date(a.interview_date).toLocaleDateString() : 'N/A'),
     ]);
     return [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
   }

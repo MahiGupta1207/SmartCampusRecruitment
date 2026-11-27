@@ -3,19 +3,15 @@ import { dataService } from '../../services/dataService';
 import { StudentProfile, Application } from '../../types';
 import { Modal } from '../../components/common/Modal';
 import {
-  Users,
   Search,
-  Filter,
-  GraduationCap,
   ExternalLink,
-  Award,
   Phone,
-  Mail,
   Linkedin,
   Github,
   CheckCircle2,
-  XCircle,
   FileText,
+  UserPlus,
+  AlertCircle,
 } from 'lucide-react';
 
 export const AdminStudents: React.FC = () => {
@@ -28,6 +24,23 @@ export const AdminStudents: React.FC = () => {
   // Dossier Modal
   const [selectedStudent, setSelectedStudent] = useState<(StudentProfile & { full_name: string; email: string }) | null>(null);
   const [isDossierOpen, setIsDossierOpen] = useState(false);
+
+  // Register Student Modal
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [addError, setAddError] = useState('');
+  const [addSuccess, setAddSuccess] = useState('');
+  const [newStudentForm, setNewStudentForm] = useState({
+    full_name: '',
+    email: '',
+    password: '',
+    enrollment_no: '',
+    branch: 'Computer Science & Engineering',
+    graduation_year: 2027,
+    cgpa: 8.0,
+    backlogs: 0,
+    phone: '',
+  });
 
   const loadStudents = async () => {
     const [allStudents, allApps] = await Promise.all([
@@ -45,6 +58,43 @@ export const AdminStudents: React.FC = () => {
   const handleOpenDossier = (st: StudentProfile & { full_name: string; email: string }) => {
     setSelectedStudent(st);
     setIsDossierOpen(true);
+  };
+
+  const handleOpenAddModal = () => {
+    setAddError('');
+    setAddSuccess('');
+    setNewStudentForm({
+      full_name: '',
+      email: '',
+      password: '',
+      enrollment_no: '',
+      branch: 'Computer Science & Engineering',
+      graduation_year: 2027,
+      cgpa: 8.0,
+      backlogs: 0,
+      phone: '',
+    });
+    setIsAddModalOpen(true);
+  };
+
+  const handleRegisterStudent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAddError('');
+    setAddSuccess('');
+    setIsRegistering(true);
+
+    const res = await dataService.adminRegisterStudent(newStudentForm);
+    setIsRegistering(false);
+
+    if (res.success) {
+      setAddSuccess(res.message || 'Student registered successfully!');
+      await loadStudents();
+      setTimeout(() => {
+        setIsAddModalOpen(false);
+      }, 1500);
+    } else {
+      setAddError(res.error || 'Failed to register student.');
+    }
   };
 
   const filteredStudents = students.filter((s) => {
@@ -78,6 +128,14 @@ export const AdminStudents: React.FC = () => {
             Monitor academic profiles, placement records, and candidate dossiers across departments.
           </p>
         </div>
+
+        <button
+          onClick={handleOpenAddModal}
+          className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs sm:text-sm rounded-xl shadow-sm transition shrink-0"
+        >
+          <UserPlus className="w-4 h-4" />
+          Register Student
+        </button>
       </div>
 
       {/* Filter and Search Bar */}
@@ -357,6 +415,172 @@ export const AdminStudents: React.FC = () => {
           </div>
         </Modal>
       )}
+
+      {/* Register Student Modal */}
+      <Modal
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+        title="Register New Student"
+        maxWidth="xl"
+      >
+        <form onSubmit={handleRegisterStudent} className="space-y-4">
+          {addError && (
+            <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{addError}</span>
+            </div>
+          )}
+
+          {addSuccess && (
+            <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+              <span>{addSuccess}</span>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Full Name *</label>
+              <input
+                type="text"
+                required
+                placeholder="e.g. Aarav Patel"
+                value={newStudentForm.full_name}
+                onChange={(e) => setNewStudentForm({ ...newStudentForm, full_name: e.target.value })}
+                className="w-full px-3.5 py-2 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Institutional Email *</label>
+              <input
+                type="email"
+                required
+                placeholder="student@campus.edu"
+                value={newStudentForm.email}
+                onChange={(e) => setNewStudentForm({ ...newStudentForm, email: e.target.value })}
+                className="w-full px-3.5 py-2 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Enrollment / Roll No. *</label>
+              <input
+                type="text"
+                required
+                placeholder="e.g. 2023CS01099"
+                value={newStudentForm.enrollment_no}
+                onChange={(e) => setNewStudentForm({ ...newStudentForm, enrollment_no: e.target.value })}
+                className="w-full px-3.5 py-2 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Temporary Password *</label>
+              <input
+                type="password"
+                required
+                minLength={6}
+                placeholder="Minimum 6 characters"
+                value={newStudentForm.password}
+                onChange={(e) => setNewStudentForm({ ...newStudentForm, password: e.target.value })}
+                className="w-full px-3.5 py-2 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Academic Branch *</label>
+              <select
+                value={newStudentForm.branch}
+                onChange={(e) => setNewStudentForm({ ...newStudentForm, branch: e.target.value })}
+                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 bg-white"
+              >
+                <option>Computer Science & Engineering</option>
+                <option>Information Technology</option>
+                <option>Electronics & Communication</option>
+                <option>Electrical Engineering</option>
+                <option>Mechanical Engineering</option>
+                <option>Civil Engineering</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Graduation Year *</label>
+              <select
+                value={newStudentForm.graduation_year}
+                onChange={(e) => setNewStudentForm({ ...newStudentForm, graduation_year: Number(e.target.value) })}
+                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 bg-white"
+              >
+                <option value={2025}>2025</option>
+                <option value={2026}>2026</option>
+                <option value={2027}>2027</option>
+                <option value={2028}>2028</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">CGPA (0 - 10) *</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                max="10"
+                required
+                value={newStudentForm.cgpa}
+                onChange={(e) => setNewStudentForm({ ...newStudentForm, cgpa: parseFloat(e.target.value) || 0 })}
+                className="w-full px-3.5 py-2 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Active Backlogs</label>
+              <input
+                type="number"
+                min="0"
+                max="15"
+                value={newStudentForm.backlogs}
+                onChange={(e) => setNewStudentForm({ ...newStudentForm, backlogs: parseInt(e.target.value) || 0 })}
+                className="w-full px-3.5 py-2 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+              />
+            </div>
+
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-bold text-slate-700 mb-1">Phone Number (Optional)</label>
+              <input
+                type="tel"
+                placeholder="+91 98765 43210"
+                value={newStudentForm.phone}
+                onChange={(e) => setNewStudentForm({ ...newStudentForm, phone: e.target.value })}
+                className="w-full px-3.5 py-2 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+            <button
+              type="button"
+              onClick={() => setIsAddModalOpen(false)}
+              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isRegistering}
+              className="inline-flex items-center gap-1.5 px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-sm transition disabled:opacity-50"
+            >
+              {isRegistering ? (
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <>
+                  <UserPlus className="w-4 h-4" />
+                  Register Student
+                </>
+              )}
+            </button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 };

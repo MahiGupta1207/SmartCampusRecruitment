@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import {
   User,
@@ -15,7 +15,7 @@ import {
   ExternalLink,
   Upload,
 } from 'lucide-react';
-import { uploadResumeToStorage } from '../../lib/supabase';
+import { uploadResumeToStorage, isSupabaseConfigured } from '../../lib/supabase';
 
 export const StudentProfile: React.FC = () => {
   const { studentProfile, updateProfile } = useAuth();
@@ -27,8 +27,8 @@ export const StudentProfile: React.FC = () => {
     enrollment_no: studentProfile?.enrollment_no || '',
     branch: studentProfile?.branch || 'Computer Science & Engineering',
     graduation_year: studentProfile?.graduation_year || 2027,
-    cgpa: studentProfile?.cgpa || 8.0,
-    backlogs: studentProfile?.backlogs || 0,
+    cgpa: studentProfile?.cgpa ?? 8.0,
+    backlogs: studentProfile?.backlogs ?? 0,
     resume_url: studentProfile?.resume_url || '',
     linkedin_url: studentProfile?.linkedin_url || '',
     github_url: studentProfile?.github_url || '',
@@ -36,6 +36,27 @@ export const StudentProfile: React.FC = () => {
     bio: studentProfile?.bio || '',
     skills: studentProfile?.skills || ['Python', 'Problem Solving', 'Data Structures'],
   });
+
+  useEffect(() => {
+    if (studentProfile) {
+      setFormData({
+        full_name: studentProfile.full_name || '',
+        email: studentProfile.email || '',
+        phone: studentProfile.phone || '',
+        enrollment_no: studentProfile.enrollment_no || '',
+        branch: studentProfile.branch || 'Computer Science & Engineering',
+        graduation_year: studentProfile.graduation_year || 2027,
+        cgpa: studentProfile.cgpa ?? 8.0,
+        backlogs: studentProfile.backlogs ?? 0,
+        resume_url: studentProfile.resume_url || '',
+        linkedin_url: studentProfile.linkedin_url || '',
+        github_url: studentProfile.github_url || '',
+        portfolio_url: studentProfile.portfolio_url || '',
+        bio: studentProfile.bio || '',
+        skills: studentProfile.skills || [],
+      });
+    }
+  }, [studentProfile]);
 
   const [newSkill, setNewSkill] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -75,18 +96,48 @@ export const StudentProfile: React.FC = () => {
     });
   };
 
+  const isValidHttpUrl = (val: string) => {
+    if (!val.trim()) return true;
+    try {
+      const parsed = new URL(val.trim());
+      return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+    } catch {
+      return false;
+    }
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
     setSaveSuccess(false);
 
-    if (formData.cgpa < 0 || formData.cgpa > 10) {
+    if (!formData.full_name.trim() || !formData.enrollment_no.trim()) {
+      setErrorMessage('Full name and enrollment number are required.');
+      return;
+    }
+
+    if (formData.phone.trim() && !/^[+\d\s()-]{7,20}$/.test(formData.phone.trim())) {
+      setErrorMessage('Please enter a valid contact phone number.');
+      return;
+    }
+
+    if (isNaN(formData.cgpa) || formData.cgpa < 0 || formData.cgpa > 10) {
       setErrorMessage('CGPA must be between 0.00 and 10.00.');
       return;
     }
 
-    if (formData.backlogs < 0) {
+    if (isNaN(formData.backlogs) || formData.backlogs < 0) {
       setErrorMessage('Backlogs cannot be a negative value.');
+      return;
+    }
+
+    if (
+      !isValidHttpUrl(formData.resume_url) ||
+      !isValidHttpUrl(formData.linkedin_url) ||
+      !isValidHttpUrl(formData.github_url) ||
+      !isValidHttpUrl(formData.portfolio_url)
+    ) {
+      setErrorMessage('All profile and resume URLs must start with http:// or https://.');
       return;
     }
 
@@ -159,9 +210,12 @@ export const StudentProfile: React.FC = () => {
               <input
                 type="email"
                 required
+                readOnly={isSupabaseConfigured}
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                className="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                className={`w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 ${
+                  isSupabaseConfigured ? 'bg-slate-50 text-slate-500 cursor-not-allowed' : ''
+                }`}
               />
             </div>
 

@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { GraduationCap, Lock, Mail, ArrowRight, ShieldCheck, UserCheck, AlertCircle } from 'lucide-react';
+import { isSupabaseConfigured } from '../../lib/supabase';
+import { GraduationCap, Lock, Mail, ArrowRight, ShieldCheck, UserCheck, AlertCircle, CheckCircle2 } from 'lucide-react';
 
 export const LoginPage: React.FC = () => {
-  const { login } = useAuth();
+  const { login, resetPassword } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -12,21 +13,31 @@ export const LoginPage: React.FC = () => {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [infoMessage, setInfoMessage] = useState('');
 
   const redirectPath = (location.state as any)?.from?.pathname;
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email) return;
+    setErrorMessage('');
+    setInfoMessage('');
+
+    if (!email.trim()) {
+      setErrorMessage('Please enter your institutional email address.');
+      return;
+    }
+
+    if (isSupabaseConfigured && !password) {
+      setErrorMessage('Please enter your password.');
+      return;
+    }
 
     setIsLoading(true);
-    setErrorMessage('');
-
     const res = await login(email, password);
     setIsLoading(false);
 
     if (res.success) {
-      if (email.toLowerCase().includes('admin') || email.toLowerCase().includes('officer')) {
+      if (res.role === 'admin') {
         navigate(redirectPath || '/admin/dashboard');
       } else {
         navigate(redirectPath || '/student/dashboard');
@@ -36,7 +47,29 @@ export const LoginPage: React.FC = () => {
     }
   };
 
+  const handleForgotPassword = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    setErrorMessage('');
+    setInfoMessage('');
+
+    if (!email.trim()) {
+      setErrorMessage('Enter your email address above first, then click "Forgot?" to receive a reset link.');
+      return;
+    }
+
+    setIsLoading(true);
+    const res = await resetPassword(email);
+    setIsLoading(false);
+
+    if (res.success) {
+      setInfoMessage('Password reset instructions have been sent to your email address.');
+    } else {
+      setErrorMessage(res.error || 'Could not send password reset email.');
+    }
+  };
+
   const handleQuickDemo = async (role: 'student' | 'admin') => {
+    if (isSupabaseConfigured) return;
     setIsLoading(true);
     setErrorMessage('');
     const demoEmail = role === 'admin' ? 'placement.officer@campus.edu' : 'priya.sharma@campus.edu';
@@ -61,41 +94,43 @@ export const LoginPage: React.FC = () => {
             Sign In to CampusHire
           </h1>
           <p className="text-xs sm:text-sm text-slate-500">
-            Select your role or enter your institutional credentials
+            Enter your institutional credentials to access your portal
           </p>
         </div>
 
-        {/* Quick Demo Access Box */}
-        <div className="bg-gradient-to-br from-indigo-50/80 to-violet-50/80 border border-indigo-100 rounded-2xl p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-indigo-900 flex items-center gap-1.5">
-              <ShieldCheck className="w-4 h-4 text-indigo-600" />
-              1-Click Instant Evaluation Demo
-            </span>
-            <span className="text-[10px] font-semibold bg-indigo-200/60 text-indigo-800 px-2 py-0.5 rounded-full">
-              No Password Needed
-            </span>
-          </div>
+        {/* Quick Demo Access Box (Only shown in offline mock mode when Supabase is not configured) */}
+        {!isSupabaseConfigured && (
+          <div className="bg-gradient-to-br from-indigo-50/80 to-violet-50/80 border border-indigo-100 rounded-2xl p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-indigo-900 flex items-center gap-1.5">
+                <ShieldCheck className="w-4 h-4 text-indigo-600" />
+                1-Click Instant Evaluation Demo
+              </span>
+              <span className="text-[10px] font-semibold bg-indigo-200/60 text-indigo-800 px-2 py-0.5 rounded-full">
+                Demo Mode
+              </span>
+            </div>
 
-          <div className="grid grid-cols-2 gap-2.5">
-            <button
-              type="button"
-              onClick={() => handleQuickDemo('student')}
-              className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-white hover:bg-slate-50 text-indigo-950 font-bold text-xs rounded-xl border border-indigo-200/80 shadow-xs transition hover:scale-[1.02]"
-            >
-              <UserCheck className="w-3.5 h-3.5 text-indigo-600" />
-              Demo Student
-            </button>
-            <button
-              type="button"
-              onClick={() => handleQuickDemo('admin')}
-              className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-white hover:bg-slate-50 text-indigo-950 font-bold text-xs rounded-xl border border-indigo-200/80 shadow-xs transition hover:scale-[1.02]"
-            >
-              <ShieldCheck className="w-3.5 h-3.5 text-violet-600" />
-              Demo Admin / T&P
-            </button>
+            <div className="grid grid-cols-2 gap-2.5">
+              <button
+                type="button"
+                onClick={() => handleQuickDemo('student')}
+                className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-white hover:bg-slate-50 text-indigo-950 font-bold text-xs rounded-xl border border-indigo-200/80 shadow-xs transition hover:scale-[1.02]"
+              >
+                <UserCheck className="w-3.5 h-3.5 text-indigo-600" />
+                Demo Student
+              </button>
+              <button
+                type="button"
+                onClick={() => handleQuickDemo('admin')}
+                className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-white hover:bg-slate-50 text-indigo-950 font-bold text-xs rounded-xl border border-indigo-200/80 shadow-xs transition hover:scale-[1.02]"
+              >
+                <ShieldCheck className="w-3.5 h-3.5 text-violet-600" />
+                Demo Admin / T&P
+              </button>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Form Card */}
         <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm space-y-5">
@@ -103,6 +138,13 @@ export const LoginPage: React.FC = () => {
             <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
               <AlertCircle className="w-4 h-4 shrink-0" />
               <span>{errorMessage}</span>
+            </div>
+          )}
+
+          {infoMessage && (
+            <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+              <span>{infoMessage}</span>
             </div>
           )}
 
@@ -127,21 +169,19 @@ export const LoginPage: React.FC = () => {
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="text-xs font-bold text-slate-700">Password</label>
-                <a
-                  href="#forgot"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    alert('Password reset link has been dispatched to your institutional mailbox.');
-                  }}
+                <button
+                  type="button"
+                  onClick={handleForgotPassword}
                   className="text-xs font-semibold text-indigo-600 hover:text-indigo-800"
                 >
                   Forgot?
-                </a>
+                </button>
               </div>
               <div className="relative">
                 <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
                 <input
                   type="password"
+                  required={isSupabaseConfigured}
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}

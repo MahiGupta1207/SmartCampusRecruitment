@@ -8,32 +8,39 @@ INSERT INTO storage.buckets (id, name, public)
 VALUES ('resumes', 'resumes', true)
 ON CONFLICT (id) DO NOTHING;
 
--- 2. Storage Policies for 'resumes' bucket
--- Allow public download/view of uploaded resumes
+-- 2. Storage Policies for 'resumes' bucket (owner-scoped folders)
+DROP POLICY IF EXISTS "Public Read Access for Resumes" ON storage.objects;
 CREATE POLICY "Public Read Access for Resumes"
   ON storage.objects FOR SELECT
   USING (bucket_id = 'resumes');
 
--- Allow authenticated students to upload their resumes
-CREATE POLICY "Authenticated users can upload resumes"
+-- Allow authenticated students to upload resumes only to their own <uid>/ folder (or admins)
+DROP POLICY IF EXISTS "Authenticated users can upload resumes" ON storage.objects;
+DROP POLICY IF EXISTS "Users can upload their own resumes" ON storage.objects;
+CREATE POLICY "Users can upload their own resumes"
   ON storage.objects FOR INSERT
   WITH CHECK (
     bucket_id = 'resumes' AND
-    auth.role() = 'authenticated'
+    auth.uid() IS NOT NULL AND
+    ((storage.foldername(name))[1] = auth.uid()::text OR public.is_admin())
   );
 
--- Allow students to update/overwrite their own resumes
+-- Allow students to update/overwrite only their own resumes (or admins)
+DROP POLICY IF EXISTS "Users can update their own resumes" ON storage.objects;
 CREATE POLICY "Users can update their own resumes"
   ON storage.objects FOR UPDATE
   USING (
     bucket_id = 'resumes' AND
-    auth.role() = 'authenticated'
+    auth.uid() IS NOT NULL AND
+    ((storage.foldername(name))[1] = auth.uid()::text OR public.is_admin())
   );
 
--- Allow users to delete their own resumes
+-- Allow users to delete only their own resumes (or admins)
+DROP POLICY IF EXISTS "Users can delete their own resumes" ON storage.objects;
 CREATE POLICY "Users can delete their own resumes"
   ON storage.objects FOR DELETE
   USING (
     bucket_id = 'resumes' AND
-    auth.role() = 'authenticated'
+    auth.uid() IS NOT NULL AND
+    ((storage.foldername(name))[1] = auth.uid()::text OR public.is_admin())
   );

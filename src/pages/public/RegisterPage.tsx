@@ -19,17 +19,24 @@ export const RegisterPage: React.FC = () => {
 
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
+    setSuccessMessage('');
 
-    if (!formData.full_name || !formData.email || !formData.password || !formData.enrollment_no) {
+    if (!formData.full_name.trim() || !formData.email.trim() || !formData.password || !formData.enrollment_no.trim()) {
       setErrorMessage('Please fill in all mandatory profile fields.');
       return;
     }
 
-    if (formData.cgpa < 0 || formData.cgpa > 10) {
+    if (formData.password.length < 6) {
+      setErrorMessage('Password must be at least 6 characters long.');
+      return;
+    }
+
+    if (isNaN(formData.cgpa) || formData.cgpa < 0 || formData.cgpa > 10) {
       setErrorMessage('CGPA must be on a scale of 0.00 to 10.00.');
       return;
     }
@@ -42,7 +49,13 @@ export const RegisterPage: React.FC = () => {
     setIsLoading(false);
 
     if (res.success) {
-      navigate('/student/dashboard');
+      if (res.requiresEmailConfirmation) {
+        setSuccessMessage(
+          'Registration successful! Please check your email inbox to confirm your account, then sign in.'
+        );
+      } else {
+        navigate('/student/dashboard');
+      }
     } else {
       setErrorMessage(res.error || 'Failed to complete registration.');
     }
@@ -68,6 +81,18 @@ export const RegisterPage: React.FC = () => {
             <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
               <AlertCircle className="w-4 h-4 shrink-0" />
               <span>{errorMessage}</span>
+            </div>
+          )}
+
+          {successMessage && (
+            <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+              <div>
+                <p className="font-semibold">{successMessage}</p>
+                <Link to="/login" className="underline font-bold text-emerald-700 mt-1 inline-block">
+                  Go to Sign In →
+                </Link>
+              </div>
             </div>
           )}
 
