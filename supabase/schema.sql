@@ -324,14 +324,18 @@ BEGIN
 
   -- Always default to 'student'; admin accounts must be promoted via Supabase SQL Editor
   INSERT INTO public.profiles (id, email, full_name, role)
-  VALUES (NEW.id, NEW.email, user_full_name, 'student'::user_role)
-  ON CONFLICT (id) DO NOTHING;
+  VALUES (NEW.id, NEW.email, user_full_name, 'student'::public.user_role)
+  ON CONFLICT DO NOTHING;
 
   -- Use provided enrollment_no; fall back to a unique UUID-based value
   enroll_no := COALESCE(
     NULLIF(TRIM(NEW.raw_user_meta_data->>'enrollment_no'), ''),
     'AUTO-' || UPPER(SUBSTRING(NEW.id::TEXT FROM 1 FOR 8))
   );
+
+  IF EXISTS (SELECT 1 FROM public.student_profiles WHERE enrollment_no = enroll_no) THEN
+    enroll_no := enroll_no || '-' || UPPER(SUBSTRING(NEW.id::TEXT FROM 1 FOR 4));
+  END IF;
 
   -- Safe insert: skip if the student_profile row already exists
   INSERT INTO public.student_profiles (
@@ -353,7 +357,7 @@ BEGIN
 
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created

@@ -18,13 +18,18 @@ BEGIN
 
   -- Always default to 'student'; admin accounts must be promoted via Supabase SQL Editor
   INSERT INTO public.profiles (id, email, full_name, role)
-  VALUES (NEW.id, NEW.email, user_full_name, 'student'::user_role)
-  ON CONFLICT (id) DO NOTHING;
+  VALUES (NEW.id, NEW.email, user_full_name, 'student'::public.user_role)
+  ON CONFLICT DO NOTHING;
 
   enroll_no := COALESCE(
     NULLIF(TRIM(NEW.raw_user_meta_data->>'enrollment_no'), ''),
     'AUTO-' || UPPER(SUBSTRING(NEW.id::TEXT FROM 1 FOR 8))
   );
+
+  -- Prevent unique_violation crash if enrollment_no already exists
+  IF EXISTS (SELECT 1 FROM public.student_profiles WHERE enrollment_no = enroll_no) THEN
+    enroll_no := enroll_no || '-' || UPPER(SUBSTRING(NEW.id::TEXT FROM 1 FOR 4));
+  END IF;
 
   INSERT INTO public.student_profiles (
     id,
@@ -45,7 +50,7 @@ BEGIN
 
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 -- 2. Prevent non-admins from escalating their own role in public.profiles
 CREATE OR REPLACE FUNCTION public.prevent_role_change()
