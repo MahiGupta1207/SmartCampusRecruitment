@@ -51,7 +51,12 @@ class DataService {
     }
 
     const reasons: string[] = [];
-    const el = job.eligibility;
+    const el = job.eligibility || {
+      min_cgpa: 0,
+      max_backlogs: 0,
+      allowed_branches: [],
+      allowed_batches: [],
+    };
 
     // Check CGPA
     if (student.cgpa < el.min_cgpa) {
@@ -96,12 +101,19 @@ class DataService {
     };
   }
 
+  // =========================================================================
   // COMPANIES
+  // =========================================================================
   public async getCompanies(): Promise<Company[]> {
     if (isSupabaseConfigured) {
       try {
-        const { data, error } = await supabase.from('companies').select('*').order('name');
-        if (!error && data && data.length > 0) return data as Company[];
+        const { data, error } = await supabase
+          .from('companies')
+          .select('*')
+          .order('name');
+        if (!error && data && data.length > 0) {
+          return data as Company[];
+        }
       } catch (err) {
         console.warn('Falling back to local cache for companies:', err);
       }
@@ -112,10 +124,18 @@ class DataService {
   public async saveCompany(companyData: Partial<Company>): Promise<Company> {
     if (isSupabaseConfigured) {
       try {
-        if (companyData.id) {
+        if (companyData.id && !companyData.id.startsWith('comp-')) {
           const { data, error } = await supabase
             .from('companies')
-            .update(companyData)
+            .update({
+              name: companyData.name,
+              logo_url: companyData.logo_url,
+              website: companyData.website,
+              industry: companyData.industry,
+              description: companyData.description,
+              location: companyData.location,
+              contact_email: companyData.contact_email,
+            })
             .eq('id', companyData.id)
             .select()
             .single();
@@ -123,7 +143,15 @@ class DataService {
         } else {
           const { data, error } = await supabase
             .from('companies')
-            .insert(companyData)
+            .insert({
+              name: companyData.name,
+              logo_url: companyData.logo_url,
+              website: companyData.website,
+              industry: companyData.industry,
+              description: companyData.description,
+              location: companyData.location,
+              contact_email: companyData.contact_email,
+            })
             .select()
             .single();
           if (!error && data) return data as Company;
@@ -160,7 +188,7 @@ class DataService {
   }
 
   public async deleteCompany(companyId: string): Promise<void> {
-    if (isSupabaseConfigured) {
+    if (isSupabaseConfigured && !companyId.startsWith('comp-')) {
       try {
         await supabase.from('companies').delete().eq('id', companyId);
       } catch (e) {
@@ -171,15 +199,47 @@ class DataService {
     this.setStorageItem(STORAGE_KEYS.COMPANIES, companies);
   }
 
+  // =========================================================================
   // JOBS
+  // =========================================================================
   public async getJobs(): Promise<Job[]> {
     if (isSupabaseConfigured) {
       try {
         const { data, error } = await supabase
           .from('jobs')
-          .select('*, company:companies(*), eligibility:job_eligibility(*)')
+          .select(`
+            *,
+            company:companies(*),
+            eligibility:job_eligibility(*)
+          `)
           .order('created_at', { ascending: false });
-        if (!error && data && data.length > 0) return data as Job[];
+
+        if (!error && data && data.length > 0) {
+          return data.map((j: any) => ({
+            id: j.id,
+            company_id: j.company_id,
+            company: j.company,
+            title: j.title,
+            role_category: j.role_category,
+            job_type: j.job_type,
+            location: j.location,
+            salary_min_lpa: Number(j.salary_min_lpa),
+            salary_max_lpa: Number(j.salary_max_lpa),
+            stipend_monthly: j.stipend_monthly ? Number(j.stipend_monthly) : undefined,
+            description: j.description,
+            requirements: j.requirements || [],
+            selection_process: j.selection_process || [],
+            deadline: j.deadline,
+            is_active: j.is_active,
+            created_at: j.created_at,
+            eligibility: (Array.isArray(j.eligibility) ? j.eligibility[0] : j.eligibility) || {
+              min_cgpa: 7.0,
+              max_backlogs: 0,
+              allowed_branches: ['Computer Science & Engineering', 'Information Technology'],
+              allowed_batches: [2026, 2027],
+            },
+          })) as Job[];
+        }
       } catch (e) {
         console.warn('Falling back to local cache for jobs:', e);
       }
@@ -193,6 +253,76 @@ class DataService {
   }
 
   public async saveJob(jobData: Partial<Job>): Promise<Job> {
+    if (isSupabaseConfigured) {
+      try {
+        let savedJobId = jobData.id;
+
+        if (savedJobId && !savedJobId.startsWith('job-')) {
+          const { data, error } = await supabase
+            .from('jobs')
+            .update({
+              company_id: jobData.company_id,
+              title: jobData.title,
+              role_category: jobData.role_category,
+              job_type: jobData.job_type,
+              location: jobData.location,
+              salary_min_lpa: jobData.salary_min_lpa,
+              salary_max_lpa: jobData.salary_max_lpa,
+              stipend_monthly: jobData.stipend_monthly,
+              description: jobData.description,
+              requirements: jobData.requirements,
+              selection_process: jobData.selection_process,
+              deadline: jobData.deadline,
+              is_active: jobData.is_active,
+            })
+            .eq('id', savedJobId)
+            .select()
+            .single();
+
+          if (!error && data) {
+            savedJobId = data.id;
+          }
+        } else {
+          const { data, error } = await supabase
+            .from('jobs')
+            .insert({
+              company_id: jobData.company_id,
+              title: jobData.title,
+              role_category: jobData.role_category,
+              job_type: jobData.job_type,
+              location: jobData.location,
+              salary_min_lpa: jobData.salary_min_lpa,
+              salary_max_lpa: jobData.salary_max_lpa,
+              stipend_monthly: jobData.stipend_monthly,
+              description: jobData.description,
+              requirements: jobData.requirements,
+              selection_process: jobData.selection_process,
+              deadline: jobData.deadline,
+              is_active: jobData.is_active ?? true,
+            })
+            .select()
+            .single();
+
+          if (!error && data) {
+            savedJobId = data.id;
+          }
+        }
+
+        // Save eligibility rules in Supabase
+        if (savedJobId && jobData.eligibility && !savedJobId.startsWith('job-')) {
+          await supabase.from('job_eligibility').upsert({
+            job_id: savedJobId,
+            min_cgpa: jobData.eligibility.min_cgpa,
+            max_backlogs: jobData.eligibility.max_backlogs,
+            allowed_branches: jobData.eligibility.allowed_branches,
+            allowed_batches: jobData.eligibility.allowed_batches,
+          });
+        }
+      } catch (err) {
+        console.warn('Supabase job save error:', err);
+      }
+    }
+
     const jobs = await this.getJobs();
     const companies = await this.getCompanies();
     const company = companies.find((c) => c.id === jobData.company_id);
@@ -239,6 +369,19 @@ class DataService {
   }
 
   public async toggleJobStatus(jobId: string): Promise<Job | null> {
+    if (isSupabaseConfigured && !jobId.startsWith('job-')) {
+      try {
+        const job = await this.getJobById(jobId);
+        if (job) {
+          await supabase
+            .from('jobs')
+            .update({ is_active: !job.is_active })
+            .eq('id', jobId);
+        }
+      } catch (e) {
+        console.warn('Supabase toggle error:', e);
+      }
+    }
     const jobs = await this.getJobs();
     const job = jobs.find((j) => j.id === jobId);
     if (job) {
@@ -250,12 +393,57 @@ class DataService {
   }
 
   public async deleteJob(jobId: string): Promise<void> {
+    if (isSupabaseConfigured && !jobId.startsWith('job-')) {
+      try {
+        await supabase.from('jobs').delete().eq('id', jobId);
+      } catch (e) {
+        console.warn('Supabase delete error:', e);
+      }
+    }
     const jobs = (await this.getJobs()).filter((j) => j.id !== jobId);
     this.setStorageItem(STORAGE_KEYS.JOBS, jobs);
   }
 
+  // =========================================================================
   // STUDENTS
+  // =========================================================================
   public async getStudents(): Promise<(StudentProfile & { full_name: string; email: string })[]> {
+    if (isSupabaseConfigured) {
+      try {
+        const { data, error } = await supabase
+          .from('student_profiles')
+          .select(`
+            *,
+            profile:profiles(full_name, email, avatar_url),
+            skills:student_skills(skill_name)
+          `);
+
+        if (!error && data && data.length > 0) {
+          return data.map((s: any) => ({
+            id: s.id,
+            full_name: s.profile?.full_name || 'Student Name',
+            email: s.profile?.email || 'student@campus.edu',
+            enrollment_no: s.enrollment_no || 'N/A',
+            phone: s.phone || '',
+            branch: s.branch || 'Computer Science & Engineering',
+            graduation_year: Number(s.graduation_year) || 2027,
+            cgpa: Number(s.cgpa) || 0,
+            backlogs: Number(s.backlogs) || 0,
+            resume_url: s.resume_url || '',
+            linkedin_url: s.linkedin_url || '',
+            github_url: s.github_url || '',
+            portfolio_url: s.portfolio_url || '',
+            bio: s.bio || '',
+            is_placed: Boolean(s.is_placed),
+            current_company: s.current_company || undefined,
+            package_lpa: s.package_lpa ? Number(s.package_lpa) : undefined,
+            skills: Array.isArray(s.skills) ? s.skills.map((sk: any) => sk.skill_name) : ['Python', 'SQL'],
+          }));
+        }
+      } catch (e) {
+        console.warn('Falling back to local cache for students:', e);
+      }
+    }
     return this.getStorageItem<(StudentProfile & { full_name: string; email: string })[]>(
       STORAGE_KEYS.STUDENTS,
       INITIAL_STUDENTS
@@ -263,6 +451,45 @@ class DataService {
   }
 
   public async getStudentById(studentId: string): Promise<(StudentProfile & { full_name: string; email: string }) | null> {
+    if (isSupabaseConfigured && !studentId.startsWith('stud-')) {
+      try {
+        const { data, error } = await supabase
+          .from('student_profiles')
+          .select(`
+            *,
+            profile:profiles(full_name, email, avatar_url),
+            skills:student_skills(skill_name)
+          `)
+          .eq('id', studentId)
+          .single();
+
+        if (!error && data) {
+          return {
+            id: data.id,
+            full_name: data.profile?.full_name || 'Student Name',
+            email: data.profile?.email || 'student@campus.edu',
+            enrollment_no: data.enrollment_no || 'N/A',
+            phone: data.phone || '',
+            branch: data.branch || 'Computer Science & Engineering',
+            graduation_year: Number(data.graduation_year) || 2027,
+            cgpa: Number(data.cgpa) || 0,
+            backlogs: Number(data.backlogs) || 0,
+            resume_url: data.resume_url || '',
+            linkedin_url: data.linkedin_url || '',
+            github_url: data.github_url || '',
+            portfolio_url: data.portfolio_url || '',
+            bio: data.bio || '',
+            is_placed: Boolean(data.is_placed),
+            current_company: data.current_company || undefined,
+            package_lpa: data.package_lpa ? Number(data.package_lpa) : undefined,
+            skills: Array.isArray(data.skills) ? data.skills.map((sk: any) => sk.skill_name) : ['Python', 'SQL'],
+          };
+        }
+      } catch (e) {
+        console.warn('Supabase student lookup error:', e);
+      }
+    }
+
     const students = await this.getStudents();
     return students.find((s) => s.id === studentId) || null;
   }
@@ -271,6 +498,53 @@ class DataService {
     studentId: string,
     updates: Partial<StudentProfile & { full_name: string; email: string }>
   ): Promise<StudentProfile & { full_name: string; email: string }> {
+    if (isSupabaseConfigured && !studentId.startsWith('stud-') && !studentId.startsWith('user-')) {
+      try {
+        // Update user profile table if name is updated
+        if (updates.full_name) {
+          await supabase
+            .from('profiles')
+            .update({ full_name: updates.full_name })
+            .eq('id', studentId);
+        }
+
+        // Upsert into student_profiles
+        await supabase.from('student_profiles').upsert({
+          id: studentId,
+          enrollment_no: updates.enrollment_no,
+          phone: updates.phone,
+          branch: updates.branch,
+          graduation_year: updates.graduation_year,
+          cgpa: updates.cgpa,
+          backlogs: updates.backlogs,
+          resume_url: updates.resume_url,
+          linkedin_url: updates.linkedin_url,
+          github_url: updates.github_url,
+          portfolio_url: updates.portfolio_url,
+          bio: updates.bio,
+          is_placed: updates.is_placed ?? false,
+          current_company: updates.current_company,
+          package_lpa: updates.package_lpa,
+        });
+
+        // Update skills if provided
+        if (updates.skills && Array.isArray(updates.skills)) {
+          // Clean existing skills
+          await supabase.from('student_skills').delete().eq('student_id', studentId);
+          // Insert new skills
+          const skillsToInsert = updates.skills.map((skill_name) => ({
+            student_id: studentId,
+            skill_name,
+          }));
+          if (skillsToInsert.length > 0) {
+            await supabase.from('student_skills').insert(skillsToInsert);
+          }
+        }
+      } catch (err) {
+        console.warn('Supabase student profile update error:', err);
+      }
+    }
+
     const students = await this.getStudents();
     const idx = students.findIndex((s) => s.id === studentId);
     if (idx !== -1) {
@@ -298,12 +572,81 @@ class DataService {
     return newStudent;
   }
 
+  // =========================================================================
   // APPLICATIONS
+  // =========================================================================
   public async getApplications(): Promise<Application[]> {
+    if (isSupabaseConfigured) {
+      try {
+        const { data, error } = await supabase
+          .from('applications')
+          .select(`
+            *,
+            job:jobs(*, company:companies(*)),
+            student:student_profiles(*, profile:profiles(full_name, email)),
+            status_history:application_status_history(*)
+          `)
+          .order('applied_at', { ascending: false });
+
+        if (!error && data && data.length > 0) {
+          return data.map((a: any) => ({
+            id: a.id,
+            job_id: a.job_id,
+            job: a.job,
+            student_id: a.student_id,
+            student: a.student ? {
+              ...a.student,
+              full_name: a.student.profile?.full_name || 'Candidate',
+              email: a.student.profile?.email || 'student@campus.edu',
+              skills: [],
+            } : undefined,
+            status: a.status,
+            applied_at: a.applied_at,
+            notes: a.notes,
+            interview_date: a.interview_date,
+            updated_at: a.updated_at,
+            status_history: a.status_history || [],
+          }));
+        }
+      } catch (e) {
+        console.warn('Falling back to local cache for applications:', e);
+      }
+    }
     return this.getStorageItem<Application[]>(STORAGE_KEYS.APPLICATIONS, INITIAL_APPLICATIONS);
   }
 
   public async getStudentApplications(studentId: string): Promise<Application[]> {
+    if (isSupabaseConfigured && !studentId.startsWith('stud-')) {
+      try {
+        const { data, error } = await supabase
+          .from('applications')
+          .select(`
+            *,
+            job:jobs(*, company:companies(*)),
+            status_history:application_status_history(*)
+          `)
+          .eq('student_id', studentId)
+          .order('applied_at', { ascending: false });
+
+        if (!error && data) {
+          return data.map((a: any) => ({
+            id: a.id,
+            job_id: a.job_id,
+            job: a.job,
+            student_id: a.student_id,
+            status: a.status,
+            applied_at: a.applied_at,
+            notes: a.notes,
+            interview_date: a.interview_date,
+            updated_at: a.updated_at,
+            status_history: a.status_history || [],
+          }));
+        }
+      } catch (e) {
+        console.warn('Supabase student applications error:', e);
+      }
+    }
+
     const apps = await this.getApplications();
     return apps.filter((a) => a.student_id === studentId);
   }
@@ -319,13 +662,59 @@ class DataService {
     }
 
     // 2. Check existing application (prevent duplicates)
+    if (isSupabaseConfigured && !student.id.startsWith('stud-') && !job.id.startsWith('job-')) {
+      try {
+        const { data: existingApp } = await supabase
+          .from('applications')
+          .select('id')
+          .eq('job_id', job.id)
+          .eq('student_id', student.id)
+          .maybeSingle();
+
+        if (existingApp) {
+          return { success: false, message: 'You have already applied for this position!' };
+        }
+
+        const { data: newApp, error: insertError } = await supabase
+          .from('applications')
+          .insert({
+            job_id: job.id,
+            student_id: student.id,
+            status: 'Applied',
+            notes: 'Application submitted via student portal.',
+          })
+          .select()
+          .single();
+
+        if (!insertError && newApp) {
+          await supabase.from('application_status_history').insert({
+            application_id: newApp.id,
+            status: 'Applied',
+            notes: 'Application registered in Supabase database.',
+          });
+
+          return {
+            success: true,
+            message: 'Application submitted successfully to Supabase!',
+            application: {
+              ...newApp,
+              job,
+              student,
+            },
+          };
+        }
+      } catch (err: any) {
+        console.warn('Supabase apply error, falling back locally:', err);
+      }
+    }
+
+    // Local / Demo Fallback
     const apps = await this.getApplications();
     const existing = apps.find((a) => a.job_id === job.id && a.student_id === student.id);
     if (existing) {
       return { success: false, message: 'You have already applied for this position!' };
     }
 
-    // 3. Create application
     const newApp: Application = {
       id: 'app-' + Date.now(),
       job_id: job.id,
@@ -357,6 +746,28 @@ class DataService {
     notes?: string,
     interviewDate?: string
   ): Promise<Application | null> {
+    if (isSupabaseConfigured && !applicationId.startsWith('app-')) {
+      try {
+        await supabase
+          .from('applications')
+          .update({
+            status: newStatus,
+            notes: notes || null,
+            interview_date: interviewDate || null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', applicationId);
+
+        await supabase.from('application_status_history').insert({
+          application_id: applicationId,
+          status: newStatus,
+          notes: notes || `Status updated to ${newStatus}`,
+        });
+      } catch (err) {
+        console.warn('Supabase status update error:', err);
+      }
+    }
+
     const apps = await this.getApplications();
     const app = apps.find((a) => a.id === applicationId);
     if (!app) return null;
@@ -384,6 +795,17 @@ class DataService {
         st.current_company = app.job.company ? app.job.company.name : app.job.title;
         st.package_lpa = app.job.salary_max_lpa || app.job.salary_min_lpa;
         this.setStorageItem(STORAGE_KEYS.STUDENTS, students);
+
+        if (isSupabaseConfigured && !st.id.startsWith('stud-')) {
+          await supabase
+            .from('student_profiles')
+            .update({
+              is_placed: true,
+              current_company: st.current_company,
+              package_lpa: st.package_lpa,
+            })
+            .eq('id', st.id);
+        }
       }
     }
 
@@ -391,7 +813,9 @@ class DataService {
     return app;
   }
 
-  // ANALYTICS CALCULATION (Live dynamic data based on active database)
+  // =========================================================================
+  // ANALYTICS (Live dynamic calculations)
+  // =========================================================================
   public async getAnalytics(): Promise<PlacementAnalytics> {
     const students = await this.getStudents();
     const companies = await this.getCompanies();
@@ -488,7 +912,9 @@ class DataService {
     };
   }
 
+  // =========================================================================
   // EXPORT CSV UTILITIES
+  // =========================================================================
   public generatePlacementsCSV(students: (StudentProfile & { full_name: string; email: string })[]): string {
     const headers = ['Full Name', 'Enrollment No', 'Email', 'Branch', 'CGPA', 'Grad Year', 'Placed Status', 'Company', 'Package (LPA)'];
     const rows = students.map((s) => [

@@ -13,7 +13,9 @@ import {
   X,
   AlertCircle,
   ExternalLink,
+  Upload,
 } from 'lucide-react';
+import { uploadResumeToStorage } from '../../lib/supabase';
 
 export const StudentProfile: React.FC = () => {
   const { studentProfile, updateProfile } = useAuth();
@@ -37,8 +39,25 @@ export const StudentProfile: React.FC = () => {
 
   const [newSkill, setNewSkill] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [isUploadingResume, setIsUploadingResume] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !studentProfile) return;
+    setIsUploadingResume(true);
+    setErrorMessage('');
+    const { url, error } = await uploadResumeToStorage(file, studentProfile.id);
+    setIsUploadingResume(false);
+    if (error) {
+      setErrorMessage(`Resume upload error: ${error}`);
+    } else if (url) {
+      setFormData((prev) => ({ ...prev, resume_url: url }));
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+    }
+  };
 
   const handleAddSkill = (e: React.FormEvent) => {
     e.preventDefault();
@@ -308,31 +327,53 @@ export const StudentProfile: React.FC = () => {
             </div>
           </div>
 
-          {/* Resume Link */}
+          {/* Resume Link & Direct Upload */}
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1">
-              Resume Document Link (Google Drive / GitHub / Hosted PDF)
+              Resume Document (Upload PDF to Supabase Storage or Paste Link)
             </label>
-            <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row gap-2">
               <input
                 type="url"
-                placeholder="https://drive.google.com/your-resume.pdf"
+                placeholder="https://drive.google.com/your-resume.pdf or upload below"
                 value={formData.resume_url}
                 onChange={(e) => setFormData({ ...formData, resume_url: e.target.value })}
                 className="flex-1 px-3.5 py-2.5 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
               />
+              <label className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs rounded-xl cursor-pointer transition border border-indigo-200 shrink-0">
+                {isUploadingResume ? (
+                  <div className="w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <>
+                    <Upload className="w-4 h-4" />
+                    <span>Upload PDF</span>
+                  </>
+                )}
+                <input
+                  type="file"
+                  accept=".pdf,.doc,.docx"
+                  onChange={handleFileUpload}
+                  disabled={isUploadingResume}
+                  className="hidden"
+                />
+              </label>
               {formData.resume_url && (
                 <a
                   href={formData.resume_url}
                   target="_blank"
                   rel="noreferrer"
-                  className="px-3 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl flex items-center justify-center"
+                  className="px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl flex items-center justify-center shrink-0"
                   title="Test Link"
                 >
                   <ExternalLink className="w-4 h-4" />
                 </a>
               )}
             </div>
+            {formData.resume_url && (
+              <p className="text-[11px] text-emerald-600 mt-1 flex items-center gap-1 font-medium">
+                <CheckCircle2 className="w-3.5 h-3.5" /> Resume attached & ready for recruiter applications
+              </p>
+            )}
           </div>
 
           {/* Social / Portfolio Links */}
