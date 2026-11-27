@@ -72,7 +72,7 @@ export const RegisterPage: React.FC = () => {
             Create Student Profile
           </h1>
           <p className="text-xs sm:text-sm text-slate-500">
-            Register for the 2026-2027 University Campus Placement Season
+            Create your student account to access campus placement opportunities
           </p>
         </div>
 
@@ -114,12 +114,12 @@ export const RegisterPage: React.FC = () => {
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Institutional Email *
+                  Email Address *
                 </label>
                 <input
                   type="email"
                   required
-                  placeholder="name.roll@campus.edu"
+                  placeholder="e.g. yourname@gmail.com"
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   className="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"

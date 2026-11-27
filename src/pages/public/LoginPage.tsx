@@ -23,7 +23,7 @@ export const LoginPage: React.FC = () => {
     setInfoMessage('');
 
     if (!email.trim()) {
-      setErrorMessage('Please enter your institutional email address.');
+      setErrorMessage('Please enter your email address.');
       return;
     }
 
@@ -128,7 +128,7 @@ export const LoginPage: React.FC = () => {
             Sign In to CampusHire
           </h1>
           <p className="text-xs sm:text-sm text-slate-500">
-            Enter your institutional credentials to access your portal
+            Enter your credentials to access your portal
           </p>
         </div>
 
@@ -185,14 +185,14 @@ export const LoginPage: React.FC = () => {
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">
-                College Email Address
+                Email Address
               </label>
               <div className="relative">
                 <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
                 <input
                   type="email"
                   required
-                  placeholder="student@campus.edu or admin@campus.edu"
+                  placeholder="e.g. yourname@gmail.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full pl-10 pr-3.5 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
