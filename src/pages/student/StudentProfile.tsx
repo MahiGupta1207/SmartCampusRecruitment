@@ -14,11 +14,13 @@ import {
   AlertCircle,
   ExternalLink,
   Upload,
+  Camera,
+  Image as ImageIcon,
 } from 'lucide-react';
-import { uploadResumeToStorage, isSupabaseConfigured } from '../../lib/supabase';
+import { uploadResumeToStorage, uploadAvatarToStorage, isSupabaseConfigured } from '../../lib/supabase';
 
 export const StudentProfile: React.FC = () => {
-  const { studentProfile, updateProfile } = useAuth();
+  const { user, studentProfile, updateProfile } = useAuth();
 
   const [formData, setFormData] = useState({
     full_name: studentProfile?.full_name || '',
@@ -59,10 +61,36 @@ export const StudentProfile: React.FC = () => {
   }, [studentProfile]);
 
   const [newSkill, setNewSkill] = useState('');
+  const [avatarUrl, setAvatarUrl] = useState(user?.avatar_url || '');
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploadingResume, setIsUploadingResume] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+
+  useEffect(() => {
+    if (user?.avatar_url) {
+      setAvatarUrl(user.avatar_url);
+    }
+  }, [user?.avatar_url]);
+
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    const targetId = user?.id || studentProfile?.id;
+    if (!file || !targetId) return;
+    setIsUploadingAvatar(true);
+    setErrorMessage('');
+    const { url, error } = await uploadAvatarToStorage(file, targetId);
+    setIsUploadingAvatar(false);
+    if (error) {
+      setErrorMessage(`Profile picture upload error: ${error}`);
+    } else if (url) {
+      setAvatarUrl(url);
+      await updateProfile({ avatar_url: url });
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+    }
+  };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -188,6 +216,59 @@ export const StudentProfile: React.FC = () => {
             <User className="w-4 h-4 text-indigo-600" />
             Basic Personal Details
           </h2>
+
+          {/* Profile Picture Upload */}
+          <div className="flex flex-col sm:flex-row items-center gap-5 pb-2">
+            <div className="relative group">
+              {avatarUrl ? (
+                <img
+                  src={avatarUrl}
+                  alt={formData.full_name || 'Student Profile'}
+                  className="w-20 h-20 rounded-full object-cover ring-4 ring-indigo-50 border border-slate-200"
+                />
+              ) : (
+                <div className="w-20 h-20 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center ring-4 ring-indigo-50/50 border border-indigo-100">
+                  <User className="w-9 h-9" />
+                </div>
+              )}
+
+              <label
+                title="Upload Profile Picture"
+                className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white flex items-center justify-center shadow-md cursor-pointer transition border-2 border-white"
+              >
+                {isUploadingAvatar ? (
+                  <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <Camera className="w-4 h-4" />
+                )}
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  onChange={handleAvatarUpload}
+                  disabled={isUploadingAvatar}
+                  className="hidden"
+                />
+              </label>
+            </div>
+
+            <div className="text-center sm:text-left space-y-1">
+              <p className="text-sm font-bold text-slate-800">Profile Picture</p>
+              <p className="text-xs text-slate-500">
+                Upload a clear passport-style photo (JPG, PNG, or WEBP, max 2 MB).
+              </p>
+              <label className="inline-flex items-center gap-1.5 px-3 py-1.5 mt-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs rounded-lg cursor-pointer transition border border-indigo-200">
+                <ImageIcon className="w-3.5 h-3.5" />
+                <span>{isUploadingAvatar ? 'Uploading...' : 'Change Photo'}</span>
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  onChange={handleAvatarUpload}
+                  disabled={isUploadingAvatar}
+                  className="hidden"
+                />
+              </label>
+            </div>
+          </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>

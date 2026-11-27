@@ -24,7 +24,9 @@ interface AuthContextType {
   resetPassword: (email: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   switchDemoRole: (role: UserRole) => void;
-  updateProfile: (updates: Partial<StudentProfile & { full_name: string; email: string }>) => Promise<void>;
+  updateProfile: (
+    updates: Partial<StudentProfile & { full_name: string; email: string; avatar_url?: string }>
+  ) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -350,16 +352,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const updateProfile = async (updates: Partial<StudentProfile & { full_name: string; email: string }>) => {
+  const updateProfile = async (
+    updates: Partial<StudentProfile & { full_name: string; email: string; avatar_url?: string }>
+  ) => {
     if (!user) return;
     // Strip protected placement fields so students cannot self-mark as placed
     const { is_placed: _p, current_company: _c, package_lpa: _l, ...safeUpdates } = updates;
     const updated = await dataService.updateStudentProfile(user.id, safeUpdates);
     setStudentProfile(updated);
-    if (safeUpdates.full_name) {
+    if (safeUpdates.full_name || safeUpdates.avatar_url !== undefined) {
       setUser({
         ...user,
-        full_name: safeUpdates.full_name,
+        full_name: safeUpdates.full_name || user.full_name,
+        avatar_url: safeUpdates.avatar_url !== undefined ? safeUpdates.avatar_url : user.avatar_url,
       });
     }
   };

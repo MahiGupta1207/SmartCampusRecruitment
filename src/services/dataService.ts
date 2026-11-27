@@ -500,15 +500,19 @@ class DataService {
 
   public async updateStudentProfile(
     studentId: string,
-    updates: Partial<StudentProfile & { full_name: string; email: string }>
+    updates: Partial<StudentProfile & { full_name: string; email: string; avatar_url?: string }>
   ): Promise<StudentProfile & { full_name: string; email: string }> {
     if (isSupabaseConfigured && !studentId.startsWith('stud-') && !studentId.startsWith('user-')) {
       try {
-        // Update user profile table if name is updated
-        if (updates.full_name) {
+        // Update user profile table if name or avatar_url is updated
+        const profileUpdates: Record<string, string> = {};
+        if (updates.full_name) profileUpdates.full_name = updates.full_name;
+        if (updates.avatar_url !== undefined) profileUpdates.avatar_url = updates.avatar_url;
+
+        if (Object.keys(profileUpdates).length > 0) {
           await supabase
             .from('profiles')
-            .update({ full_name: updates.full_name })
+            .update(profileUpdates)
             .eq('id', studentId);
         }
 

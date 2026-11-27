@@ -112,3 +112,83 @@ export async function uploadResumeToStorage(
     return { url: null, error: err?.message || 'Upload failed' };
   }
 }
+
+const ALLOWED_AVATAR_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp'];
+const ALLOWED_AVATAR_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const MAX_AVATAR_SIZE_BYTES = 2 * 1024 * 1024; // 2 MB
+
+/**
+ * Upload student profile picture to Supabase Storage ('avatars' bucket, falling back to 'resumes' if needed).
+ */
+export async function uploadAvatarToStorage(
+  file: File,
+  userId: string
+): Promise<{ url: string | null; error: string | null }> {
+  const fileExt = (file.name.split('.').pop() || '').toLowerCase();
+
+  if (!ALLOWED_AVATAR_EXTENSIONS.includes(fileExt)) {
+    return {
+      url: null,
+      error: 'Invalid image type. Only JPG, PNG, and WEBP images are allowed.',
+    };
+  }
+
+  if (file.type && !ALLOWED_AVATAR_MIME_TYPES.includes(file.type)) {
+    return {
+      url: null,
+      error: 'Invalid image MIME type. Please upload a valid JPG, PNG, or WEBP file.',
+    };
+  }
+
+  if (file.size > MAX_AVATAR_SIZE_BYTES) {
+    return {
+      url: null,
+      error: 'Image size exceeds the 2 MB limit. Please upload a smaller image.',
+    };
+  }
+
+  if (!isSupabaseConfigured) {
+    return {
+      url: URL.createObjectURL(file),
+      error: null,
+    };
+  }
+
+  try {
+    const filePath = `${userId}/avatar-${Date.now()}.${fileExt}`;
+
+    let bucket = 'avatars';
+    let { error: uploadError } = await supabase.storage
+      .from(bucket)
+      .upload(filePath, file, {
+        cacheControl: '3600',
+        upsert: true,
+        contentType: file.type || 'image/jpeg',
+      });
+
+    // Fallback to 'resumes' bucket if 'avatars' bucket hasn't been created yet
+    if (uploadError && uploadError.message.toLowerCase().includes('not found')) {
+      bucket = 'resumes';
+      const fallback = await supabase.storage
+        .from(bucket)
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: true,
+          contentType: file.type || 'image/jpeg',
+        });
+      uploadError = fallback.error;
+    }
+
+    if (uploadError) {
+      return { url: null, error: uploadError.message };
+    }
+
+    const { data: { publicUrl } } = supabase.storage
+      .from(bucket)
+      .getPublicUrl(filePath);
+
+    return { url: publicUrl, error: null };
+  } catch (err: any) {
+    return { url: null, error: err?.message || 'Image upload failed' };
+  }
+}
