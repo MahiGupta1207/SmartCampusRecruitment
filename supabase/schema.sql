@@ -1,6 +1,7 @@
 -- =====================================================================
 -- SMART CAMPUS RECRUITMENT SYSTEM (CampusHire)
 -- Complete Production Database Schema & Row Level Security (RLS)
+-- Idempotent: Safe to run multiple times without duplicate errors
 -- =====================================================================
 
 -- 1. EXTENSIONS
@@ -190,84 +191,103 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- PROFILES POLICIES
+DROP POLICY IF EXISTS "Users can view all basic profiles" ON public.profiles;
 CREATE POLICY "Users can view all basic profiles"
   ON public.profiles FOR SELECT
   USING (auth.uid() IS NOT NULL);
 
+DROP POLICY IF EXISTS "Users can update their own profile" ON public.profiles;
 CREATE POLICY "Users can update their own profile"
   ON public.profiles FOR UPDATE
   USING (auth.uid() = id);
 
 -- STUDENT PROFILES POLICIES
+DROP POLICY IF EXISTS "Students can view their own profile or admins view all" ON public.student_profiles;
 CREATE POLICY "Students can view their own profile or admins view all"
   ON public.student_profiles FOR SELECT
   USING (auth.uid() = id OR public.is_admin());
 
+DROP POLICY IF EXISTS "Students can update own profile" ON public.student_profiles;
 CREATE POLICY "Students can update own profile"
   ON public.student_profiles FOR UPDATE
   USING (auth.uid() = id OR public.is_admin());
 
+DROP POLICY IF EXISTS "Students can insert own student profile" ON public.student_profiles;
 CREATE POLICY "Students can insert own student profile"
   ON public.student_profiles FOR INSERT
   WITH CHECK (auth.uid() = id OR public.is_admin());
 
 -- STUDENT SKILLS POLICIES
+DROP POLICY IF EXISTS "Students or admins can view skills" ON public.student_skills;
 CREATE POLICY "Students or admins can view skills"
   ON public.student_skills FOR SELECT
   USING (auth.uid() = student_id OR public.is_admin());
 
+DROP POLICY IF EXISTS "Students can manage own skills" ON public.student_skills;
 CREATE POLICY "Students can manage own skills"
   ON public.student_skills FOR ALL
   USING (auth.uid() = student_id OR public.is_admin());
 
 -- COMPANIES POLICIES
+DROP POLICY IF EXISTS "Anyone logged in can view companies" ON public.companies;
 CREATE POLICY "Anyone logged in can view companies"
   ON public.companies FOR SELECT
   USING (auth.uid() IS NOT NULL);
 
+DROP POLICY IF EXISTS "Only admins can insert companies" ON public.companies;
 CREATE POLICY "Only admins can insert companies"
   ON public.companies FOR INSERT
   WITH CHECK (public.is_admin());
 
+DROP POLICY IF EXISTS "Only admins can update companies" ON public.companies;
 CREATE POLICY "Only admins can update companies"
   ON public.companies FOR UPDATE
   USING (public.is_admin());
 
+DROP POLICY IF EXISTS "Only admins can delete companies" ON public.companies;
 CREATE POLICY "Only admins can delete companies"
   ON public.companies FOR DELETE
   USING (public.is_admin());
 
 -- JOBS & ELIGIBILITY POLICIES
+DROP POLICY IF EXISTS "Authenticated users can view active jobs" ON public.jobs;
 CREATE POLICY "Authenticated users can view active jobs"
   ON public.jobs FOR SELECT
   USING (auth.uid() IS NOT NULL);
 
+DROP POLICY IF EXISTS "Admins can manage jobs" ON public.jobs;
 CREATE POLICY "Admins can manage jobs"
   ON public.jobs FOR ALL
   USING (public.is_admin());
 
+DROP POLICY IF EXISTS "Authenticated users can view job eligibility" ON public.job_eligibility;
 CREATE POLICY "Authenticated users can view job eligibility"
   ON public.job_eligibility FOR SELECT
   USING (auth.uid() IS NOT NULL);
 
+DROP POLICY IF EXISTS "Admins can manage job eligibility" ON public.job_eligibility;
 CREATE POLICY "Admins can manage job eligibility"
   ON public.job_eligibility FOR ALL
   USING (public.is_admin());
 
 -- APPLICATIONS POLICIES
+DROP POLICY IF EXISTS "Students see own applications, admins see all" ON public.applications;
 CREATE POLICY "Students see own applications, admins see all"
   ON public.applications FOR SELECT
   USING (auth.uid() = student_id OR public.is_admin());
 
+DROP POLICY IF EXISTS "Students can apply only as themselves" ON public.applications;
 CREATE POLICY "Students can apply only as themselves"
   ON public.applications FOR INSERT
   WITH CHECK (auth.uid() = student_id);
 
+DROP POLICY IF EXISTS "Admins can update application status" ON public.applications;
 CREATE POLICY "Admins can update application status"
   ON public.applications FOR UPDATE
   USING (public.is_admin());
 
 -- APPLICATION HISTORY POLICIES
+DROP POLICY IF EXISTS "Students see own history, admins see all" ON public.application_status_history;
 CREATE POLICY "Students see own history, admins see all"
   ON public.application_status_history FOR SELECT
   USING (
@@ -277,11 +297,13 @@ CREATE POLICY "Students see own history, admins see all"
     )
   );
 
+DROP POLICY IF EXISTS "Admins can insert status history" ON public.application_status_history;
 CREATE POLICY "Admins can insert status history"
   ON public.application_status_history FOR INSERT
   WITH CHECK (public.is_admin());
 
 -- NOTIFICATIONS POLICIES
+DROP POLICY IF EXISTS "Users can view and manage their own notifications" ON public.notifications;
 CREATE POLICY "Users can view and manage their own notifications"
   ON public.notifications FOR ALL
   USING (auth.uid() = user_id);
