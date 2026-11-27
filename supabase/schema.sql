@@ -315,20 +315,33 @@ CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 DECLARE
   user_full_name TEXT;
-  user_role_val user_role;
+  user_role_val  user_role;
+  enroll_no      TEXT;
 BEGIN
-  user_full_name := COALESCE(NEW.raw_user_meta_data->>'full_name', split_part(NEW.email, '@', 1));
-  
+  user_full_name := COALESCE(
+    NULLIF(TRIM(NEW.raw_user_meta_data->>'full_name'), ''),
+    split_part(NEW.email, '@', 1)
+  );
+
   IF NEW.raw_user_meta_data->>'role' = 'admin' THEN
     user_role_val := 'admin'::user_role;
   ELSE
     user_role_val := 'student'::user_role;
   END IF;
 
+  -- Safe insert: skip if the profile row already exists (e.g. duplicate signUp attempt)
   INSERT INTO public.profiles (id, email, full_name, role)
-  VALUES (NEW.id, NEW.email, user_full_name, user_role_val);
+  VALUES (NEW.id, NEW.email, user_full_name, user_role_val)
+  ON CONFLICT (id) DO NOTHING;
 
   IF user_role_val = 'student'::user_role THEN
+    -- Use provided enrollment_no; fall back to a unique UUID-based value
+    enroll_no := COALESCE(
+      NULLIF(TRIM(NEW.raw_user_meta_data->>'enrollment_no'), ''),
+      'AUTO-' || UPPER(SUBSTRING(NEW.id::TEXT FROM 1 FOR 8))
+    );
+
+    -- Safe insert: skip if the student_profile row already exists
     INSERT INTO public.student_profiles (
       id,
       enrollment_no,
@@ -338,12 +351,13 @@ BEGIN
       backlogs
     ) VALUES (
       NEW.id,
-      COALESCE(NEW.raw_user_meta_data->>'enrollment_no', '2023CS' || LPAD(FLOOR(RANDOM() * 900 + 100)::TEXT, 4, '0')),
-      COALESCE(NEW.raw_user_meta_data->>'branch', 'Computer Science & Engineering'),
-      COALESCE((NEW.raw_user_meta_data->>'graduation_year')::INTEGER, 2027),
-      COALESCE((NEW.raw_user_meta_data->>'cgpa')::NUMERIC, 8.00),
+      enroll_no,
+      COALESCE(NULLIF(TRIM(NEW.raw_user_meta_data->>'branch'), ''), 'Computer Science & Engineering'),
+      COALESCE(NULLIF(NEW.raw_user_meta_data->>'graduation_year', '')::INTEGER, 2027),
+      COALESCE(NULLIF(NEW.raw_user_meta_data->>'cgpa', '')::NUMERIC, 8.00),
       0
-    );
+    )
+    ON CONFLICT (id) DO NOTHING;
   END IF;
 
   RETURN NEW;

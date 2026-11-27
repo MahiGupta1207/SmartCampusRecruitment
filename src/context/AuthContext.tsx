@@ -181,19 +181,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             data: {
               full_name: data.full_name,
               role: data.role,
-              enrollment_no: data.enrollment_no,
-              branch: data.branch,
-              graduation_year: data.graduation_year,
-              cgpa: data.cgpa,
+              enrollment_no: data.enrollment_no || '',
+              branch: data.branch || '',
+              graduation_year: data.graduation_year ?? null,
+              cgpa: data.cgpa ?? null,
             },
           },
         });
+        setIsLoading(false);
         if (error) {
-          setIsLoading(false);
+          // Map generic Supabase trigger errors to a human-readable message
+          if (error.message.includes('Database error')) {
+            return {
+              success: false,
+              error:
+                'Registration failed due to a database error. This enrollment number may already be registered — please try a different one, or contact support.',
+            };
+          }
+          if (error.message.includes('already registered') || error.message.includes('already been registered')) {
+            return { success: false, error: 'An account with this email already exists. Please log in.' };
+          }
           return { success: false, error: error.message };
         }
+        // Supabase signup succeeded — Supabase trigger creates profiles/student_profiles automatically.
+        // If email confirmation is enabled the user is created but session may be null until confirmed.
+        return { success: true };
       }
 
+      // ── Fallback: mock mode (no Supabase credentials) ──
       const newId = 'user-' + Date.now();
       const newUser: UserProfile = {
         id: newId,
