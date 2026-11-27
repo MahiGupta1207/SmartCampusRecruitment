@@ -227,3 +227,27 @@ CREATE POLICY "Users can delete their own avatars"
     auth.uid() IS NOT NULL AND
     ((storage.foldername(name))[1] = auth.uid()::text OR public.is_admin())
   );
+
+-- 8. Backfill any existing auth.users missing a profile or student_profile row
+INSERT INTO public.profiles (id, email, full_name, role)
+SELECT
+  u.id,
+  u.email,
+  COALESCE(NULLIF(TRIM(u.raw_user_meta_data->>'full_name'), ''), split_part(u.email, '@', 1)),
+  'student'::public.user_role
+FROM auth.users u
+WHERE NOT EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = u.id)
+ON CONFLICT DO NOTHING;
+
+INSERT INTO public.student_profiles (id, enrollment_no, branch, graduation_year, cgpa, backlogs)
+SELECT
+  p.id,
+  'AUTO-' || UPPER(SUBSTRING(p.id::TEXT FROM 1 FOR 8)),
+  'Computer Science & Engineering',
+  2027,
+  8.00,
+  0
+FROM public.profiles p
+WHERE p.role = 'student'::public.user_role
+  AND NOT EXISTS (SELECT 1 FROM public.student_profiles sp WHERE sp.id = p.id)
+ON CONFLICT DO NOTHING;

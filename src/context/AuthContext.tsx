@@ -159,6 +159,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         if (error) {
           setIsLoading(false);
+          const msg = error.message.toLowerCase();
+          if (msg.includes('email not confirmed')) {
+            return {
+              success: false,
+              error:
+                'Your email address is not confirmed yet. Please check your inbox/spam for the verification link, or disable "Confirm email" in Supabase Authentication settings.',
+            };
+          }
+          if (msg.includes('invalid login credentials')) {
+            return {
+              success: false,
+              error: 'Invalid email or password. Please check your credentials and try again.',
+            };
+          }
           return { success: false, error: error.message };
         }
 
