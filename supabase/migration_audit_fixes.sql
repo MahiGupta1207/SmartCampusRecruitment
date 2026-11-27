@@ -1,10 +1,12 @@
 -- =====================================================================
 -- SMART CAMPUS RECRUITMENT SYSTEM (CampusHire)
--- Security & Functional Audit Migration (Idempotent & Non-Destructive)
--- Run this in Supabase Dashboard -> SQL Editor
+-- Final Security & Functional Audit Migration (Idempotent & Non-Destructive)
+--
+-- IMPORTANT: Run the Preflight Queries BEFORE running this migration.
+-- Do NOT run against production without reviewing the preflight results.
 -- =====================================================================
 
--- 1. Harden helper function is_admin() with explicit safe search_path
+-- 1. Harden role helper functions with explicit safe search_path
 CREATE OR REPLACE FUNCTION public.is_admin()
 RETURNS BOOLEAN AS $$
 BEGIN
@@ -18,8 +20,21 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 REVOKE ALL ON FUNCTION public.is_admin() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.is_admin() TO authenticated;
 
+CREATE OR REPLACE FUNCTION public.is_student()
+RETURNS BOOLEAN AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM public.profiles
+    WHERE id = auth.uid() AND role = 'student'::public.user_role
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+REVOKE ALL ON FUNCTION public.is_student() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.is_student() TO authenticated;
+
 -- 2. Harden handle_new_user() trigger:
---    - Never allow self-registration as 'admin'
+--    - Always creates 'student' (admin accounts cannot be self-registered)
 --    - Safe search_path = public
 --    - Resilient to malformed/out-of-range graduation_year and cgpa metadata
 --    - Resilient to duplicate enrollment_no
@@ -38,7 +53,6 @@ BEGIN
     split_part(NEW.email, '@', 1)
   );
 
-  -- Always default to 'student'; admin accounts must be promoted via Supabase SQL Editor
   INSERT INTO public.profiles (id, email, full_name, role)
   VALUES (NEW.id, NEW.email, user_full_name, 'student'::public.user_role)
   ON CONFLICT DO NOTHING;
@@ -145,21 +159,50 @@ CREATE TRIGGER trg_prevent_student_placement_tampering
   BEFORE UPDATE ON public.student_profiles
   FOR EACH ROW EXECUTE FUNCTION public.prevent_student_placement_tampering();
 
--- 5. Validate application ownership, job status/deadline, and eligibility before INSERT
+-- 5. Safe check & enforcement of unique (job_id, student_id) on public.applications
+--    Stops with an error if existing duplicates are found instead of deleting data.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_indexes
+    WHERE schemaname = 'public'
+      AND tablename = 'applications'
+      AND indexdef ILIKE '%(job_id, student_id)%'
+  ) THEN
+    IF EXISTS (
+      SELECT 1
+      FROM public.applications
+      GROUP BY job_id, student_id
+      HAVING COUNT(*) > 1
+    ) THEN
+      RAISE EXCEPTION 'Duplicate applications detected for the same (job_id, student_id). Run the preflight query and resolve duplicates manually before applying unique index.';
+    END IF;
+
+    CREATE UNIQUE INDEX idx_applications_unique_job_student
+      ON public.applications (job_id, student_id);
+  END IF;
+END $$;
+
+-- 6. Validate student role, ownership, job status/deadline, and eligibility before INSERT
 CREATE OR REPLACE FUNCTION public.validate_job_application()
 RETURNS TRIGGER AS $$
 DECLARE
-  v_job             RECORD;
-  v_elig            RECORD;
-  v_student         RECORD;
-  v_min_cgpa        NUMERIC(4,2) := 7.00;
-  v_max_backlogs    INTEGER := 0;
+  v_job              RECORD;
+  v_elig             RECORD;
+  v_student          RECORD;
+  v_min_cgpa         NUMERIC(4,2) := 7.00;
+  v_max_backlogs     INTEGER := 0;
   v_allowed_branches TEXT[] := ARRAY['Computer Science & Engineering', 'Information Technology'];
   v_allowed_batches  INTEGER[] := ARRAY[2026, 2027];
 BEGIN
-  -- Enforce ownership: non-admins can only apply as themselves
-  IF auth.uid() IS NOT NULL AND NOT public.is_admin() AND NEW.student_id IS DISTINCT FROM auth.uid() THEN
-    RAISE EXCEPTION 'You can only submit applications for yourself';
+  IF auth.uid() IS NOT NULL THEN
+    IF NOT public.is_student() THEN
+      RAISE EXCEPTION 'Only student accounts can submit job applications';
+    END IF;
+    IF NEW.student_id IS DISTINCT FROM auth.uid() THEN
+      RAISE EXCEPTION 'You can only submit applications for yourself';
+    END IF;
   END IF;
 
   SELECT id, is_active, deadline INTO v_job
@@ -231,7 +274,25 @@ CREATE TRIGGER trg_validate_job_application
   BEFORE INSERT ON public.applications
   FOR EACH ROW EXECUTE FUNCTION public.validate_job_application();
 
--- 6. Automatically record initial 'Applied' status in application_status_history
+-- 7. Prevent non-admins from updating application status/fields
+CREATE OR REPLACE FUNCTION public.prevent_student_application_tampering()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF auth.uid() IS NOT NULL AND NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Only administrators can modify application records';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+REVOKE ALL ON FUNCTION public.prevent_student_application_tampering() FROM PUBLIC;
+
+DROP TRIGGER IF EXISTS trg_prevent_student_application_tampering ON public.applications;
+CREATE TRIGGER trg_prevent_student_application_tampering
+  BEFORE UPDATE ON public.applications
+  FOR EACH ROW EXECUTE FUNCTION public.prevent_student_application_tampering();
+
+-- 8. Automatically record initial 'Applied' status in application_status_history
 CREATE OR REPLACE FUNCTION public.log_initial_application_status()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -248,7 +309,8 @@ CREATE TRIGGER trg_log_initial_application_status
   AFTER INSERT ON public.applications
   FOR EACH ROW EXECUTE FUNCTION public.log_initial_application_status();
 
--- 7. Cleanly replace ALL existing RLS policies on core tables (prevents legacy permissive bypasses)
+-- 9. Cleanly replace ALL existing RLS policies on core public tables
+--    (Note: No 'recruiter' role exists in schema or app; 'admin' / Placement Officer manages drives)
 DO $$
 DECLARE
   pol RECORD;
@@ -277,7 +339,7 @@ ALTER TABLE public.job_eligibility ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.applications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.application_status_history ENABLE ROW LEVEL SECURITY;
 
--- PROFILES: users view/update only their own row; admins view/update all
+-- PROFILES
 CREATE POLICY "Users view own profile or admins view all"
   ON public.profiles FOR SELECT
   USING (auth.uid() = id OR public.is_admin());
@@ -287,7 +349,7 @@ CREATE POLICY "Users update own profile or admins update all"
   USING (auth.uid() = id OR public.is_admin())
   WITH CHECK (auth.uid() = id OR public.is_admin());
 
--- STUDENT PROFILES: students view/insert/update only their own row; admins manage all
+-- STUDENT PROFILES
 CREATE POLICY "Students view own profile or admins view all"
   ON public.student_profiles FOR SELECT
   USING (auth.uid() = id OR public.is_admin());
@@ -301,7 +363,7 @@ CREATE POLICY "Students update own profile or admins update all"
   USING (auth.uid() = id OR public.is_admin())
   WITH CHECK (auth.uid() = id OR public.is_admin());
 
--- JOBS: authenticated users view active jobs (or jobs they applied to); admins manage all
+-- JOBS
 CREATE POLICY "Authenticated users view active jobs or admins view all"
   ON public.jobs FOR SELECT
   USING (
@@ -328,7 +390,7 @@ CREATE POLICY "Admins delete jobs"
   ON public.jobs FOR DELETE
   USING (public.is_admin());
 
--- JOB ELIGIBILITY: authenticated users view; admins manage
+-- JOB ELIGIBILITY
 CREATE POLICY "Authenticated users view job eligibility"
   ON public.job_eligibility FOR SELECT
   USING (auth.uid() IS NOT NULL);
@@ -346,14 +408,14 @@ CREATE POLICY "Admins delete job eligibility"
   ON public.job_eligibility FOR DELETE
   USING (public.is_admin());
 
--- APPLICATIONS: students see own & apply only as themselves; admins manage all
+-- APPLICATIONS (Student role + ownership enforced)
 CREATE POLICY "Students see own applications or admins see all"
   ON public.applications FOR SELECT
   USING (auth.uid() = student_id OR public.is_admin());
 
 CREATE POLICY "Students apply only as themselves"
   ON public.applications FOR INSERT
-  WITH CHECK (auth.uid() IS NOT NULL AND auth.uid() = student_id);
+  WITH CHECK (auth.uid() IS NOT NULL AND auth.uid() = student_id AND public.is_student());
 
 CREATE POLICY "Admins update applications"
   ON public.applications FOR UPDATE
@@ -364,7 +426,7 @@ CREATE POLICY "Admins delete applications"
   ON public.applications FOR DELETE
   USING (public.is_admin());
 
--- APPLICATION STATUS HISTORY: students see own history; only admins insert/update/delete
+-- APPLICATION STATUS HISTORY (Read-only for students; admins manage)
 CREATE POLICY "Students see own status history or admins see all"
   ON public.application_status_history FOR SELECT
   USING (
@@ -387,12 +449,16 @@ CREATE POLICY "Admins delete status history"
   ON public.application_status_history FOR DELETE
   USING (public.is_admin());
 
--- 8. RESUME PRIVACY: Private 'resumes' bucket + owner/admin-only access policies
+-- 10. STORAGE SECURITY AUDIT & PRIVATE RESUMES BUCKET
 INSERT INTO storage.buckets (id, name, public)
 VALUES ('resumes', 'resumes', false)
 ON CONFLICT (id) DO UPDATE SET public = false;
 
--- Drop any existing storage.objects policies targeting 'resumes' or 'avatars'
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('avatars', 'avatars', true)
+ON CONFLICT (id) DO NOTHING;
+
+-- Drop ONLY policies on storage.objects that target 'resumes' or 'avatars'
 DO $$
 DECLARE
   pol RECORD;
@@ -422,6 +488,26 @@ BEGIN
       )
   LOOP
     EXECUTE format('DROP POLICY IF EXISTS %I ON storage.objects;', pol.policyname);
+  END LOOP;
+END $$;
+
+-- Safety check: abort if ANY remaining policy on storage.objects lacks a bucket_id restriction
+-- (A broad policy without bucket_id would bypass private resume restrictions via OR semantics)
+DO $$
+DECLARE
+  broad_pol RECORD;
+BEGIN
+  FOR broad_pol IN
+    SELECT policyname, cmd
+    FROM pg_policies
+    WHERE schemaname = 'storage'
+      AND tablename = 'objects'
+      AND (
+        (cmd IN ('SELECT', 'UPDATE', 'DELETE', 'ALL') AND COALESCE(qual::text, '') NOT ILIKE '%bucket_id%')
+        OR (cmd IN ('INSERT', 'UPDATE', 'ALL') AND COALESCE(with_check::text, '') NOT ILIKE '%bucket_id%')
+      )
+  LOOP
+    RAISE EXCEPTION 'Broad storage.objects policy "%" (cmd=%) without bucket_id filter would bypass private resume security. Inspect storage.objects policies and scope or drop it before re-running.', broad_pol.policyname, broad_pol.cmd;
   END LOOP;
 END $$;
 
@@ -462,11 +548,6 @@ CREATE POLICY "Users can delete their own resumes"
     ((storage.foldername(name))[1] = auth.uid()::text OR public.is_admin())
   );
 
--- 9. Profile pictures ('avatars' bucket with owner folder isolation)
-INSERT INTO storage.buckets (id, name, public)
-VALUES ('avatars', 'avatars', true)
-ON CONFLICT (id) DO NOTHING;
-
 CREATE POLICY "Public Read Access for Avatars"
   ON storage.objects FOR SELECT
   USING (bucket_id = 'avatars');
@@ -500,7 +581,7 @@ CREATE POLICY "Users can delete their own avatars"
     ((storage.foldername(name))[1] = auth.uid()::text OR public.is_admin())
   );
 
--- 10. Backfill any existing auth.users missing a profile or student_profile row
+-- 11. Non-destructive backfill for existing auth.users missing a profile row
 INSERT INTO public.profiles (id, email, full_name, role)
 SELECT
   u.id,

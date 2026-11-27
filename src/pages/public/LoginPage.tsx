@@ -5,7 +5,7 @@ import { isSupabaseConfigured } from '../../lib/supabase';
 import { GraduationCap, Lock, Mail, ArrowRight, ShieldCheck, UserCheck, AlertCircle, CheckCircle2 } from 'lucide-react';
 
 export const LoginPage: React.FC = () => {
-  const { login, resetPassword } = useAuth();
+  const { login, register, resetPassword } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -77,16 +77,42 @@ export const LoginPage: React.FC = () => {
     setPassword(demoPass);
 
     setIsLoading(true);
-    const res = await login(demoEmail, demoPass);
+    let res = await login(demoEmail, demoPass);
+
+    // If Demo Student does not exist in Supabase Auth yet, auto-register it once
+    if (!res.success && role === 'student' && res.error?.toLowerCase().includes('invalid')) {
+      const regRes = await register({
+        email: demoEmail,
+        password: demoPass,
+        full_name: 'Priya Sharma',
+        role: 'student',
+        enrollment_no: '2023CS01042',
+        branch: 'Computer Science & Engineering',
+        graduation_year: 2027,
+        cgpa: 9.15,
+      });
+
+      if (regRes.success && !regRes.requiresEmailConfirmation) {
+        res = await login(demoEmail, demoPass);
+      } else if (regRes.success && regRes.requiresEmailConfirmation) {
+        setIsLoading(false);
+        setInfoMessage(
+          `Demo Student (${demoEmail}) was just created! Please disable "Confirm email" in Supabase Auth → Providers → Email (or confirm the email) and click Demo Student again.`
+        );
+        return;
+      }
+    }
+
     setIsLoading(false);
 
     if (res.success) {
       navigate(res.role === 'admin' ? '/admin/dashboard' : '/student/dashboard');
-    } else {
+    } else if (role === 'admin') {
       setErrorMessage(
-        res.error ||
-          `Demo ${role} account is not set up in Supabase Auth yet. Register ${demoEmail} or create it in Supabase Authentication.`
+        `${res.error || 'Demo Admin login failed.'} Create ${demoEmail} (password: ${demoPass}) in Supabase Authentication → Users, then promote it to admin in SQL Editor.`
       );
+    } else {
+      setErrorMessage(res.error || 'Demo Student sign-in failed.');
     }
   };
 
