@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { isSupabaseConfigured } from '../../lib/supabase';
+import { dataService } from '../../services/dataService';
+import { AppNotification } from '../../types';
 import {
   GraduationCap,
   Briefcase,
@@ -19,6 +21,8 @@ import {
   ArrowRightLeft,
   Shield,
   Layers,
+  Bell,
+  BellRing,
 } from 'lucide-react';
 
 export const Navbar: React.FC = () => {
@@ -27,6 +31,55 @@ export const Navbar: React.FC = () => {
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+
+  // Notifications state
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const notifRef = useRef<HTMLDivElement>(null);
+
+  const unreadCount = notifications.filter((n) => !n.is_read).length;
+
+  const loadNotifications = useCallback(async () => {
+    if (user && isSupabaseConfigured) {
+      const data = await dataService.getNotifications(user.id);
+      setNotifications(data);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (!user || !isSupabaseConfigured) return;
+    loadNotifications();
+    const unsub = dataService.subscribeToNotifications(user.id, (n) => {
+      setNotifications((prev) => [n, ...prev]);
+    });
+    return unsub;
+  }, [user, loadNotifications]);
+
+  // Close notification panel on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
+        setNotifOpen(false);
+      }
+    };
+    if (notifOpen) document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [notifOpen]);
+
+  const handleNotifClick = async (n: AppNotification) => {
+    if (!n.is_read) {
+      await dataService.markNotificationRead(n.id);
+      setNotifications((prev) => prev.map((x) => (x.id === n.id ? { ...x, is_read: true } : x)));
+    }
+    setNotifOpen(false);
+    if (n.link) navigate(n.link);
+  };
+
+  const handleMarkAllRead = async () => {
+    if (!user) return;
+    await dataService.markAllNotificationsRead(user.id);
+    setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
+  };
 
   const isActive = (path: string) => location.pathname === path;
 
@@ -237,7 +290,64 @@ export const Navbar: React.FC = () => {
                 </Link>
               </div>
             ) : (
-              <div className="relative">
+              <div className="flex items-center gap-2">
+                {/* Notification Bell */}
+                {isSupabaseConfigured && (
+                  <div className="relative" ref={notifRef}>
+                    <button
+                      type="button"
+                      onClick={() => setNotifOpen(!notifOpen)}
+                      aria-label="Notifications"
+                      className="relative p-2 rounded-xl hover:bg-slate-100 transition focus:outline-none"
+                    >
+                      {unreadCount > 0
+                        ? <BellRing className="w-5 h-5 text-indigo-600" />
+                        : <Bell className="w-5 h-5 text-slate-500" />}
+                      {unreadCount > 0 && (
+                        <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-rose-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
+                          {unreadCount > 9 ? '9+' : unreadCount}
+                        </span>
+                      )}
+                    </button>
+
+                    {notifOpen && (
+                      <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-xl border border-slate-100 z-50 animate-in fade-in zoom-in-95">
+                        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+                          <h3 className="text-sm font-bold text-slate-900">Notifications</h3>
+                          {unreadCount > 0 && (
+                            <button
+                              type="button"
+                              onClick={handleMarkAllRead}
+                              className="text-xs text-indigo-600 font-semibold hover:text-indigo-800 transition"
+                            >
+                              Mark all read
+                            </button>
+                          )}
+                        </div>
+                        <div className="max-h-80 overflow-y-auto divide-y divide-slate-50">
+                          {notifications.length === 0 ? (
+                            <p className="text-xs text-slate-400 text-center py-8">No notifications yet</p>
+                          ) : (
+                            notifications.map((n) => (
+                              <div
+                                key={n.id}
+                                onClick={() => handleNotifClick(n)}
+                                className={`px-4 py-3 cursor-pointer hover:bg-slate-50 transition ${!n.is_read ? 'bg-indigo-50/40' : ''}`}
+                              >
+                                <p className={`text-xs font-bold ${!n.is_read ? 'text-slate-900' : 'text-slate-600'}`}>{n.title}</p>
+                                <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">{n.message}</p>
+                                <p className="text-[10px] text-slate-400 mt-1">{new Date(n.created_at).toLocaleString()}</p>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* User Avatar / Menu */}
+                <div className="relative">
                 <button
                   onClick={() => setUserMenuOpen(!userMenuOpen)}
                   className="flex items-center gap-3 p-1.5 rounded-xl hover:bg-slate-100 transition focus:outline-none"
@@ -305,6 +415,7 @@ export const Navbar: React.FC = () => {
                   </div>
                 )}
               </div>
+              </div>
             )}
           </div>
 
@@ -316,6 +427,23 @@ export const Navbar: React.FC = () => {
                 className="p-1.5 text-xs font-semibold bg-amber-50 border border-amber-200 text-amber-800 rounded-lg"
               >
                 <ArrowRightLeft className="w-4 h-4" />
+              </button>
+            )}
+            {isSupabaseConfigured && user && (
+              <button
+                type="button"
+                onClick={() => setNotifOpen(!notifOpen)}
+                aria-label="Notifications"
+                className="relative p-2 rounded-lg text-slate-600 hover:bg-slate-100"
+              >
+                {unreadCount > 0
+                  ? <BellRing className="w-5 h-5 text-indigo-600" />
+                  : <Bell className="w-5 h-5 text-slate-500" />}
+                {unreadCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-rose-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
               </button>
             )}
             <button

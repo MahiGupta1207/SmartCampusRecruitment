@@ -27,6 +27,7 @@ interface AuthContextType {
   updateProfile: (
     updates: Partial<StudentProfile & { full_name: string; email: string; avatar_url?: string }>
   ) => Promise<void>;
+  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -395,6 +396,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const refreshProfile = async () => {
+    if (!user) return;
+    if (isSupabaseConfigured) {
+      await loadSupabaseProfile(user.id);
+    } else if (user.role === 'student') {
+      const sp = await dataService.getStudentById(user.id);
+      if (sp) setStudentProfile(sp);
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -407,6 +418,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         logout,
         switchDemoRole,
         updateProfile,
+        refreshProfile,
       }}
     >
       {children}

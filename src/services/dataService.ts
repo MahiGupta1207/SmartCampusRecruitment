@@ -1232,6 +1232,61 @@ class DataService {
     ]);
     return [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
   }
+
+  // ─── Notification Methods ───────────────────────────────────────────────────
+
+  public async getNotifications(userId: string): Promise<import('../types').AppNotification[]> {
+    if (isSupabaseConfigured) {
+      const { data, error } = await supabase
+        .from('notifications')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(50);
+      if (!error && data) return data as import('../types').AppNotification[];
+    }
+    return [];
+  }
+
+  public async markNotificationRead(notificationId: string): Promise<void> {
+    if (isSupabaseConfigured) {
+      await supabase
+        .from('notifications')
+        .update({ is_read: true })
+        .eq('id', notificationId);
+    }
+  }
+
+  public async markAllNotificationsRead(userId: string): Promise<void> {
+    if (isSupabaseConfigured) {
+      await supabase
+        .from('notifications')
+        .update({ is_read: true })
+        .eq('user_id', userId)
+        .eq('is_read', false);
+    }
+  }
+
+  public subscribeToNotifications(
+    userId: string,
+    cb: (n: import('../types').AppNotification) => void
+  ): () => void {
+    if (!isSupabaseConfigured) return () => {};
+    const channel = supabase
+      .channel('notifications:' + userId)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'notifications',
+          filter: 'user_id=eq.' + userId,
+        },
+        (payload) => cb(payload.new as import('../types').AppNotification)
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }
 }
 
 export const dataService = new DataService();

@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 
 export const StudentApplications: React.FC = () => {
-  const { studentProfile, updateProfile } = useAuth();
+  const { studentProfile, refreshProfile } = useAuth();
   const [applications, setApplications] = useState<Application[]>([]);
   const [selectedStatus, setSelectedStatus] = useState<string>('All');
   const [selectedApp, setSelectedApp] = useState<Application | null>(null);
@@ -44,8 +44,8 @@ export const StudentApplications: React.FC = () => {
     if (res.success) {
       await fetchApps();
       if (decision === 'Accepted' && studentProfile) {
-        // Trigger a harmless profile refresh so StudentDashboard placement banner updates
-        await updateProfile({});
+        // Refresh profile so StudentDashboard placement banner updates
+        await refreshProfile();
       }
       setOfferFeedback({ type: 'success', text: res.message });
     } else {
